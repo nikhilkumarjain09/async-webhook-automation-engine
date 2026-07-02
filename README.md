@@ -17,7 +17,7 @@ graph TD
         Gateway -->|Enqueue Jobs| Redis[(Redis Broker)]
     end
 
-    subgraph Processing Layer (BullMQ Workers)
+    subgraph ProcessingLayer["Processing Layer (BullMQ Workers)"]
         Redis -->|Dequeue Jobs| Worker[Webhook Worker Processor]
         Worker -->|1. Validate rules & evaluate conditions| RulesEngine[Rules Engine Service]
         Worker -->|2. Sequentially execute steps| ActionsEngine[Actions Engine Service]

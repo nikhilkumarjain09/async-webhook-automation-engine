@@ -2,219 +2,245 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
-  Webhook, PlayCircle, Activity, TrendingUp,
-  CheckCircle2, XCircle, Clock, ArrowRight,
+  Webhook, PlayCircle, Activity, Sliders,
+  CheckCircle2, XCircle, Clock, RotateCcw,
+  Zap, AlertTriangle, ArrowRight, RefreshCw,
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { Execution } from '../types';
 import {
-  MetricCard, SectionCard, SectionCardHeader, StatusBadge,
-  PageHeader, EmptyState, SkeletonMetricCard, SkeletonRow,
+  MetricCard, SectionCard, StatusBadge, PageHeader,
+  EmptyState, SkeletonMetric, SkeletonRow, ErrorAlert,
+  fmtDate, fmtMs,
 } from '../components/UI';
 
 export const DashboardView: React.FC = () => {
-  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
+  const { data: stats, isLoading: sL, error: sE, refetch: sRefetch } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => (await apiClient.get('/dashboard/stats')).data,
-    refetchInterval: 10000,
+    refetchInterval: 12000,
   });
 
-  const { data: recent, isLoading: recentLoading } = useQuery<Execution[]>({
-    queryKey: ['recent-executions'],
-    queryFn: async () => (await apiClient.get('/executions', { params: { page: 1, limit: 6 } })).data,
+  const { data: recent, isLoading: rL } = useQuery<Execution[]>({
+    queryKey: ['recent-executions-dash'],
+    queryFn: async () => (await apiClient.get('/executions', { params: { page: 1, limit: 8 } })).data,
     refetchInterval: 8000,
   });
 
-  if (statsError) {
+  const { metrics = {}, webhooks = {}, executions = {}, rules = {} } = stats ?? {};
+
+  const statusRow = (label: string, val: number, status: string) => (
+    <div className="stat-row" key={label}>
+      <StatusBadge status={status} />
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{val ?? 0}</span>
+    </div>
+  );
+
+  if (sE) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <EmptyState
-          icon={XCircle}
-          title="Failed to load dashboard"
-          description="Check that the backend is running and your Tenant ID is valid. Refresh to retry."
+      <div className="error-page">
+        <ErrorAlert
+          title="Dashboard Unavailable"
+          message='Failed to load dashboard data. Ensure the API server is running and your Tenant ID is valid in the sidebar.'
+          action={
+            <button className="btn btn-secondary btn-sm" onClick={() => sRefetch()}>
+              <RefreshCw size={12} /> Retry
+            </button>
+          }
         />
       </div>
     );
   }
 
-  const { metrics, webhooks, executions, rules } = stats ?? { metrics: {}, webhooks: {}, executions: {}, rules: {} };
-
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        description="Live automation throughput and ingestion health overview."
+        description="Real-time telemetry across your automation pipeline — ingestion, processing, and execution health."
         badge={
           <span className="badge badge-active" style={{ verticalAlign: 'middle' }}>
-            <span className="live-dot" style={{ width: 6, height: 6, display: 'inline-block', borderRadius: '50%', background: 'var(--success)' }} />
+            <span className="badge-dot" />
             Live
           </span>
         }
+        action={
+          <button className="btn btn-secondary btn-sm" onClick={() => sRefetch()}>
+            <RefreshCw size={12} /> Refresh
+          </button>
+        }
       />
 
-      {/* KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {statsLoading ? (
-          <>
-            <SkeletonMetricCard /><SkeletonMetricCard /><SkeletonMetricCard />
-          </>
+      {/* ── KPI Row 1 ──────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
+        {sL ? (
+          <><SkeletonMetric /><SkeletonMetric /><SkeletonMetric /><SkeletonMetric /></>
         ) : (
           <>
             <MetricCard
-              title="Ingested Webhooks"
-              value={metrics?.totalWebhooks ?? 0}
-              sub="Total payloads received"
+              title="Total Webhooks"
+              value={metrics.totalWebhooks ?? 0}
+              sub="All-time events ingested"
               icon={Webhook}
               accent="indigo"
             />
             <MetricCard
-              title="Rule Executions"
-              value={metrics?.totalExecutions ?? 0}
-              sub="Across all automation rules"
+              title="Total Executions"
+              value={metrics.totalExecutions ?? 0}
+              sub="Automation runs triggered"
               icon={PlayCircle}
-              accent="neutral"
+              accent="blue"
             />
             <MetricCard
               title="Success Rate"
-              value={`${metrics?.successRate ?? 0}%`}
-              sub="Completed vs total runs"
+              value={`${metrics.successRate ?? 0}%`}
+              sub="Completed / total executions"
               icon={Activity}
               accent="green"
+            />
+            <MetricCard
+              title="Active Rules"
+              value={rules.active ?? 0}
+              sub={`${rules.inactive ?? 0} inactive`}
+              icon={Sliders}
+              accent="purple"
             />
           </>
         )}
       </div>
 
-      {/* Status breakdown + rule inventory */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        {/* Webhooks status */}
-        <SectionCard>
-          <SectionCardHeader title="Webhook Ingestion" subtitle="Breakdown by pipeline status" icon={Webhook} />
-          <div className="p-5 space-y-3">
-            {statsLoading ? (
-              [1,2,3,4].map(n => <div key={n} className="skeleton h-4 w-full" />)
-            ) : (
-              [
-                { label: 'Completed', val: webhooks?.completed, s: 'completed' },
-                { label: 'Processing', val: webhooks?.processing, s: 'processing' },
-                { label: 'Pending',    val: webhooks?.pending,   s: 'pending' },
-                { label: 'Failed',     val: webhooks?.failed,    s: 'failed' },
-              ].map(({ label, val, s }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <StatusBadge status={s} />
-                  <span className="text-sm font-semibold text-white">{val ?? 0}</span>
-                </div>
-              ))
-            )}
+      {/* ── KPI Row 2 ──────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 16, marginBottom: 28 }}>
+        {sL ? (
+          <><SkeletonMetric /><SkeletonMetric /><SkeletonMetric /><SkeletonMetric /></>
+        ) : (
+          <>
+            <MetricCard title="Completed" value={executions.completed ?? 0} sub="Successful runs" icon={CheckCircle2} accent="green" />
+            <MetricCard title="Failed"    value={executions.failed    ?? 0} sub="Require attention"icon={XCircle}      accent="red" />
+            <MetricCard title="Retrying"  value={executions.retrying  ?? 0} sub="Back-off queue"   icon={RotateCcw}   accent="amber" />
+            <MetricCard title="Queued"    value={executions.queued    ?? 0} sub="Waiting to run"   icon={Clock}       accent="indigo" />
+          </>
+        )}
+      </div>
+
+      {/* ── Middle row: Status breakdown + Recent webhook events ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        {/* Webhook pipeline status */}
+        <SectionCard title="Webhook Pipeline" subtitle="Event ingestion by status" icon={Webhook}>
+          <div style={{ padding: '4px 20px 16px' }}>
+            {sL
+              ? [1,2,3,4].map(n => <div key={n} className="skeleton" style={{ height: 16, marginBottom: 12 }} />)
+              : <>
+                  {statusRow('Completed', webhooks.completed, 'completed')}
+                  {statusRow('Processing', webhooks.processing, 'processing')}
+                  {statusRow('Pending', webhooks.pending, 'pending')}
+                  {statusRow('Failed', webhooks.failed, 'failed')}
+                </>}
           </div>
         </SectionCard>
 
-        {/* Executions status */}
-        <SectionCard>
-          <SectionCardHeader title="Execution Runs" subtitle="Breakdown by pipeline status" icon={PlayCircle} />
-          <div className="p-5 space-y-3">
-            {statsLoading ? (
-              [1,2,3,4,5].map(n => <div key={n} className="skeleton h-4 w-full" />)
-            ) : (
-              [
-                { label: 'Completed', val: executions?.completed, s: 'completed' },
-                { label: 'Processing', val: executions?.processing, s: 'processing' },
-                { label: 'Queued',    val: executions?.queued,    s: 'queued' },
-                { label: 'Retrying',  val: executions?.retrying,  s: 'retrying' },
-                { label: 'Failed',    val: executions?.failed,    s: 'failed' },
-              ].map(({ label, val, s }) => (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <StatusBadge status={s} />
-                  <span className="text-sm font-semibold text-white">{val ?? 0}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </SectionCard>
-
-        {/* Rules inventory */}
-        <SectionCard>
-          <SectionCardHeader title="Automation Rules" subtitle="Configured rule inventory" icon={TrendingUp} />
-          <div className="p-5 space-y-4">
-            {statsLoading ? (
-              [1,2].map(n => <div key={n} className="skeleton h-6 w-full" />)
-            ) : (
-              <>
-                <div className="flex items-center justify-between rounded-xl p-3.5"
-                  style={{ background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.12)' }}>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 size={15} className="text-green-400" />
-                    <span className="text-sm font-medium text-slate-300">Active Rules</span>
-                  </div>
-                  <span className="text-xl font-bold text-green-300">{rules?.active ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between rounded-xl p-3.5"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2">
-                    <Clock size={15} className="text-slate-500" />
-                    <span className="text-sm font-medium text-slate-400">Inactive Rules</span>
-                  </div>
-                  <span className="text-xl font-bold text-slate-400">{rules?.inactive ?? 0}</span>
-                </div>
-              </>
-            )}
+        {/* Execution pipeline status */}
+        <SectionCard title="Execution Pipeline" subtitle="Automation runs by status" icon={Zap}>
+          <div style={{ padding: '4px 20px 16px' }}>
+            {sL
+              ? [1,2,3,4,5].map(n => <div key={n} className="skeleton" style={{ height: 16, marginBottom: 12 }} />)
+              : <>
+                  {statusRow('Completed', executions.completed, 'completed')}
+                  {statusRow('Processing', executions.processing, 'processing')}
+                  {statusRow('Retrying', executions.retrying, 'retrying')}
+                  {statusRow('Queued', executions.queued, 'queued')}
+                  {statusRow('Failed', executions.failed, 'failed')}
+                </>}
           </div>
         </SectionCard>
       </div>
 
-      {/* Recent executions table */}
-      <SectionCard noPad>
-        <SectionCardHeader
-          title="Recent Executions"
-          subtitle="Last 6 automation runs"
-          icon={Clock}
-          action={
-            <Link to="/executions" className="btn-ghost" style={{ padding: '5px 10px', fontSize: '0.75rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              View all <ArrowRight size={12} />
-            </Link>
-          }
-        />
-        <div style={{ overflowX: 'auto' }}>
+      {/* ── Recent Executions table ─────────────────────────────── */}
+      <SectionCard
+        title="Recent Executions"
+        subtitle="Latest 8 automation runs across your rules"
+        icon={PlayCircle}
+        action={
+          <Link
+            to="/executions"
+            className="btn btn-ghost btn-sm"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+          >
+            View all <ArrowRight size={11} />
+          </Link>
+        }
+        footer={
+          <div style={{ padding: '10px 20px' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Auto-refreshes every 8 seconds</span>
+          </div>
+        }
+      >
+        <div className="ae-table-container">
           <table className="ae-table">
             <thead>
               <tr>
                 <th>Run ID</th>
                 <th>Rule</th>
+                <th>Status</th>
                 <th>Duration</th>
                 <th>Retries</th>
-                <th>Status</th>
-                <th>Started At</th>
+                <th>Steps</th>
+                <th>Started</th>
               </tr>
             </thead>
             <tbody>
-              {recentLoading && [1,2,3,4].map(n => <SkeletonRow key={n} cols={6} />)}
-              {!recentLoading && (!recent || recent.length === 0) && (
+              {rL && [1,2,3,4,5].map(n => <SkeletonRow key={n} cols={7} />)}
+              {!rL && (!recent || recent.length === 0) && (
                 <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <td colSpan={7} style={{ padding: 0 }}>
                     <EmptyState
                       icon={PlayCircle}
                       title="No executions yet"
-                      description="Automation runs will appear here once webhooks are ingested."
+                      description="Executions appear here automatically as webhooks are ingested and matched to rules."
                     />
                   </td>
                 </tr>
               )}
-              {!recentLoading && recent?.map(exec => (
-                <tr key={exec._id}>
-                  <td className="mono text-slate-400">{exec._id.slice(0, 10)}…</td>
-                  <td className="text-white font-medium">
-                    {typeof exec.ruleId === 'object' ? exec.ruleId.name : exec.ruleId.slice(0, 10) + '…'}
+              {!rL && recent?.map((ex) => (
+                <tr key={ex._id}>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    {ex._id.slice(0, 12)}…
                   </td>
-                  <td className="font-mono font-medium text-slate-300">{exec.durationMs}ms</td>
-                  <td className="text-slate-400">{exec.retryCount}</td>
-                  <td><StatusBadge status={exec.status} /></td>
-                  <td className="text-slate-500 text-xs">{new Date(exec.startedAt).toLocaleString()}</td>
+                  <td className="td-primary">
+                    {typeof ex.ruleId === 'object' ? ex.ruleId.name : `Rule ${String(ex.ruleId).slice(0, 8)}…`}
+                  </td>
+                  <td><StatusBadge status={ex.status} pulse={ex.status === 'processing'} /></td>
+                  <td className="mono" style={{ fontSize: 12 }}>{fmtMs(ex.durationMs)}</td>
+                  <td style={{ textAlign: 'center' }}>{ex.retryCount}</td>
+                  <td style={{ textAlign: 'center' }}>{ex.steps?.length ?? 0}</td>
+                  <td style={{ fontSize: 12 }}>{fmtDate(ex.startedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </SectionCard>
+
+      {/* ── Failures alert ──────────────────────────────────────── */}
+      {!sL && (executions.failed ?? 0) > 0 && (
+        <div className="alert alert-warning" style={{ marginTop: 20 }}>
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 700, marginBottom: 2 }}>
+              {executions.failed} failed execution{executions.failed !== 1 ? 's' : ''} require attention
+            </p>
+            <p style={{ fontSize: 12, opacity: 0.85 }}>
+              Review your execution history to identify and replay failed jobs.
+            </p>
+          </div>
+          <Link
+            to="/executions"
+            className="btn btn-secondary btn-sm"
+            style={{ textDecoration: 'none', flexShrink: 0 }}
+          >
+            View Failures <ArrowRight size={11} />
+          </Link>
+        </div>
+      )}
     </div>
   );
 };

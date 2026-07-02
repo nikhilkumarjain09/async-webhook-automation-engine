@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PlayCircle, AlertCircle } from 'lucide-react';
+import { PlayCircle } from 'lucide-react';
 import { apiClient } from '../api/client';
 import type { Execution } from '../types';
 import {
   PageHeader, ExecutionCard, EmptyState, FilterBar,
-  Select, Input, PaginationBar,
+  Select, Input, Pagination, ErrorAlert,
 } from '../components/UI';
 
-const STATUS_OPTIONS = [
+const STATUS_OPTS = [
   { value: '',           label: 'All Statuses' },
   { value: 'queued',     label: 'Queued' },
   { value: 'processing', label: 'Processing' },
@@ -17,113 +17,130 @@ const STATUS_OPTIONS = [
   { value: 'retrying',   label: 'Retrying' },
 ];
 
+const LIMIT = 10;
+
 export const ExecutionsView: React.FC = () => {
   const qc = useQueryClient();
+
   const [page, setPage]           = useState(1);
-  const LIMIT                     = 10;
   const [status, setStatus]       = useState('');
   const [ruleId, setRuleId]       = useState('');
   const [webhookId, setWebhookId] = useState('');
   const [replayingId, setReplayingId] = useState<string | null>(null);
 
-  const { data: executions, isLoading, isError } = useQuery<Execution[]>({
+  const { data: executions, isLoading, isError, refetch } = useQuery<Execution[]>({
     queryKey: ['executions', page, status, ruleId, webhookId],
     queryFn: async () => (await apiClient.get('/executions', {
-      params: { page, limit: LIMIT, status: status || undefined, ruleId: ruleId || undefined, webhookEventId: webhookId || undefined },
+      params: {
+        page, limit: LIMIT,
+        status:        status    || undefined,
+        ruleId:        ruleId    || undefined,
+        webhookEventId: webhookId || undefined,
+      },
     })).data,
     refetchInterval: 6000,
   });
 
   const replayMut = useMutation({
-    mutationFn: async (id: string) => (await apiClient.post(`/executions/${id}/replay`, { reason: 'Manual trigger from dashboard' })).data,
+    mutationFn: async (id: string) =>
+      (await apiClient.post(`/executions/${id}/replay`, { reason: 'Manual replay from dashboard' })).data,
     onMutate: (id) => setReplayingId(id),
     onSuccess: (data) => {
-      alert(`Replay queued! ID: ${data?.data?._id ?? 'N/A'}`);
+      const newId = data?.data?._id ?? 'N/A';
+      alert(`✓ Replay queued successfully\nNew execution ID: ${newId}`);
       qc.invalidateQueries({ queryKey: ['executions'] });
       qc.invalidateQueries({ queryKey: ['replays'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
     },
-    onError: (err: any) => alert(`Replay failed: ${err.response?.data?.message ?? err.message}`),
+    onError: (e: any) => alert(`Replay failed: ${e.response?.data?.message ?? e.message}`),
     onSettled: () => setReplayingId(null),
   });
 
   const reset = () => { setStatus(''); setRuleId(''); setWebhookId(''); setPage(1); };
+  const hasFilters = !!(status || ruleId || webhookId);
 
   return (
     <div>
       <PageHeader
         title="Execution History"
-        description="Expand any run to view the full step timeline, payloads, and error traces."
+        description="Full audit trail of every automation run. Expand any row to inspect step-by-step output, error traces, request/response payloads, and replay failed jobs."
       />
 
-      <FilterBar onReset={reset}>
+      <FilterBar onReset={hasFilters ? reset : undefined}>
         <Select
           label="Status"
-          options={STATUS_OPTIONS}
+          options={STATUS_OPTS}
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1); }}
-          style={{ minWidth: 140 }}
+          style={{ minWidth: 150 }}
         />
         <Input
           label="Rule ID"
           value={ruleId}
           onChange={e => { setRuleId(e.target.value); setPage(1); }}
-          placeholder="24-char Mongo ID"
-          style={{ minWidth: 180 }}
+          placeholder="24-char ObjectId"
+          style={{ minWidth: 200 }}
         />
         <Input
-          label="Webhook ID"
+          label="Webhook Event ID"
           value={webhookId}
           onChange={e => { setWebhookId(e.target.value); setPage(1); }}
-          placeholder="24-char Mongo ID"
-          style={{ minWidth: 180 }}
+          placeholder="24-char ObjectId"
+          style={{ minWidth: 200 }}
         />
       </FilterBar>
 
-      <div className="mt-4 space-y-2.5">
+      {isError && (
+        <ErrorAlert
+          title="Failed to Load Executions"
+          message="Could not reach the API. Verify your Tenant ID and that the backend is running."
+          action={<button className="btn btn-secondary btn-sm" onClick={() => refetch()}>Retry</button>}
+        />
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {isLoading && [1,2,3,4].map(n => (
-          <div key={n} className="skeleton rounded-xl" style={{ height: 60 }} />
+          <div key={n} className="skeleton" style={{ height: 60, borderRadius: 14 }} />
         ))}
 
-        {isError && (
-          <EmptyState
-            icon={AlertCircle}
-            title="Failed to load executions"
-            description="Ensure the API server is reachable and your Tenant ID header is valid."
-          />
-        )}
-
         {!isLoading && !isError && (!executions || executions.length === 0) && (
-          <EmptyState
-            icon={PlayCircle}
-            title="No executions found"
-            description="Executions are created automatically when a matching webhook is received."
-            action={<button className="btn-ghost" onClick={reset}>Reset filters</button>}
-          />
+          <div className="card-section">
+            <EmptyState
+              icon={PlayCircle}
+              title={hasFilters ? 'No executions match your filters' : 'No executions yet'}
+              description={
+                hasFilters
+                  ? 'Adjust or reset your filters to see more results.'
+                  : 'Executions are created automatically when an inbound webhook matches an active rule.'
+              }
+              action={hasFilters ? <button className="btn btn-secondary btn-sm" onClick={reset}>Reset Filters</button> : undefined}
+            />
+          </div>
         )}
 
-        {!isLoading && executions?.map(exec => (
+        {!isLoading && !isError && executions?.map(ex => (
           <ExecutionCard
-            key={exec._id}
-            id={exec._id}
-            ruleName={typeof exec.ruleId === 'object' ? exec.ruleId.name : `Rule ${exec.ruleId.slice(0, 8)}…`}
-            webhookId={exec.webhookEventId}
-            status={exec.status}
-            durationMs={exec.durationMs}
-            retryCount={exec.retryCount}
-            startedAt={exec.startedAt}
-            error={exec.error}
-            steps={exec.steps}
-            onReplay={exec.status === 'failed' ? () => replayMut.mutate(exec._id) : undefined}
-            replayLoading={replayingId === exec._id}
+            key={ex._id}
+            id={ex._id}
+            ruleName={typeof ex.ruleId === 'object' ? ex.ruleId.name : `Rule ${String(ex.ruleId).slice(0, 10)}…`}
+            webhookId={ex.webhookEventId}
+            status={ex.status}
+            durationMs={ex.durationMs}
+            retryCount={ex.retryCount}
+            startedAt={ex.startedAt}
+            error={ex.error}
+            steps={ex.steps}
+            onReplay={ex.status === 'failed' ? () => replayMut.mutate(ex._id) : undefined}
+            replayLoading={replayingId === ex._id}
           />
         ))}
       </div>
 
-      <div className="mt-4 card" style={{ background: 'var(--bg-surface)' }}>
-        <PaginationBar
+      <div className="card-section" style={{ marginTop: 16 }}>
+        <Pagination
           page={page}
           hasNext={Boolean(executions && executions.length === LIMIT)}
-          onPrev={() => setPage(p => Math.max(p - 1, 1))}
+          onPrev={() => setPage(p => Math.max(1, p - 1))}
           onNext={() => { if (executions && executions.length === LIMIT) setPage(p => p + 1); }}
         />
       </div>

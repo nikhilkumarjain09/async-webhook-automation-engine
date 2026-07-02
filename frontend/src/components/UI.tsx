@@ -1,370 +1,474 @@
 import React, { useState } from 'react';
 import {
-  CheckCircle2, XCircle, Clock, Zap,
-  RotateCcw, Copy, Check, ChevronDown, ChevronUp,
-  ArrowRight, Loader2, Inbox,
+  CheckCircle2, XCircle, Clock, Zap, RotateCcw,
+  Copy, Check, ChevronDown, ChevronUp, Loader2,
+  Inbox, AlertTriangle, ArrowRight, RefreshCw,
 } from 'lucide-react';
 
-// ─── STATUS BADGE ─────────────────────────────────────────────────────────
-export type StatusType =
-  | 'completed' | 'success' | 'active'
-  | 'failed'    | 'error'
-  | 'processing'
-  | 'retrying'
-  | 'queued'    | 'pending' | 'triggered'
-  | 'inactive'
-  | string;
+// ── Helpers ─────────────────────────────────────────────────────────────────
+const fmtDate = (s: string) =>
+  new Date(s).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
 
-interface StatusBadgeProps {
-  status: StatusType;
-  pulse?: boolean;
-}
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, pulse = false }) => {
-  const s = (status || '').toLowerCase();
-  const cls = `badge badge-${s}`;
+const fmtMs = (ms: number) =>
+  ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`;
 
-  let dot: React.ReactNode = null;
-  if (s === 'processing') {
-    dot = <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400 dot-blink" />;
-  } else if (s === 'completed' || s === 'success' || s === 'active') {
-    dot = <span className={`inline-block w-1.5 h-1.5 rounded-full bg-green-400 ${pulse ? 'dot-pulse' : ''}`} />;
-  } else if (s === 'failed' || s === 'error') {
-    dot = <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" />;
-  } else if (s === 'retrying') {
-    dot = <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 dot-blink" />;
-  } else {
-    dot = <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />;
-  }
+// ── STATUS BADGE ────────────────────────────────────────────────────────────
+export type StatusType = string;
 
+const STATUS_ICONS: Record<string, React.ReactNode> = {
+  completed:  <CheckCircle2 size={11} />,
+  success:    <CheckCircle2 size={11} />,
+  active:     <CheckCircle2 size={11} />,
+  failed:     <XCircle      size={11} />,
+  error:      <XCircle      size={11} />,
+  retrying:   <RotateCcw    size={11} />,
+  processing: <Zap          size={11} />,
+  queued:     <Clock        size={11} />,
+  pending:    <Clock        size={11} />,
+  triggered:  <Clock        size={11} />,
+  inactive:   <Clock        size={11} />,
+};
+
+export const StatusBadge: React.FC<{ status: StatusType; pulse?: boolean }> = ({ status, pulse = false }) => {
+  const s = (status || 'unknown').toLowerCase();
   return (
-    <span className={cls}>
-      {dot}
+    <span className={`badge badge-${s}`}>
+      <span className={`badge-dot ${pulse && (s === 'active' || s === 'processing') ? 'dot-pulse' : ''}`} />
+      {STATUS_ICONS[s] ?? <Clock size={11} />}
       {status}
     </span>
   );
 };
 
-// ─── PAGE HEADER ──────────────────────────────────────────────────────────
-interface PageHeaderProps {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-  badge?: React.ReactNode;
-}
-export const PageHeader: React.FC<PageHeaderProps> = ({ title, description, action, badge }) => (
-  <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2.5">
-        <h1 className="display-md text-white">{title}</h1>
-        {badge}
-      </div>
-      {description && <p className="body-md text-sm">{description}</p>}
-    </div>
-    {action && <div className="shrink-0 flex items-center gap-2">{action}</div>}
-  </div>
-);
+// ── SOURCE CHIP ─────────────────────────────────────────────────────────────
+export const SourceChip: React.FC<{ source: string }> = ({ source }) => {
+  const key = source.toLowerCase();
+  const cls = ['stripe','github','shopify','slack'].includes(key)
+    ? `source-chip source-${key}`
+    : 'source-chip source-default';
+  return <span className={cls}>{source}</span>;
+};
 
-// ─── METRIC CARD ──────────────────────────────────────────────────────────
+// ── METRIC CARD ─────────────────────────────────────────────────────────────
+type Accent = 'indigo' | 'green' | 'red' | 'amber' | 'blue' | 'purple';
+
+const ACCENT_TEXT: Record<Accent, string> = {
+  indigo: '#a5b4fc', green: '#4ade80', red: '#f87171',
+  amber: '#fbbf24',  blue: '#60a5fa',  purple: '#c084fc',
+};
+const ACCENT_ICON: Record<Accent, string> = {
+  indigo: 'rgba(99,102,241,0.12)', green: 'rgba(34,197,94,0.1)',
+  red:    'rgba(239,68,68,0.1)',   amber: 'rgba(245,158,11,0.1)',
+  blue:   'rgba(59,130,246,0.1)', purple: 'rgba(168,85,247,0.1)',
+};
+const ACCENT_ICON_BORDER: Record<Accent, string> = {
+  indigo: 'rgba(99,102,241,0.25)', green: 'rgba(34,197,94,0.2)',
+  red:    'rgba(239,68,68,0.2)',   amber: 'rgba(245,158,11,0.2)',
+  blue:   'rgba(59,130,246,0.2)', purple: 'rgba(168,85,247,0.2)',
+};
+
 interface MetricCardProps {
   title: string;
   value: string | number;
   sub?: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  accent?: 'indigo' | 'green' | 'red' | 'amber' | 'neutral';
+  trend?: { value: string; up: boolean };
+  icon: React.ComponentType<{ size?: number }>;
+  accent?: Accent;
 }
-export const MetricCard: React.FC<MetricCardProps> = ({ title, value, sub, icon: Icon, accent = 'neutral' }) => {
-  const accentMap: Record<string, string> = {
-    indigo: 'text-indigo-400 bg-indigo-400/10 border-indigo-400/20',
-    green:  'text-green-400  bg-green-400/10  border-green-400/20',
-    red:    'text-red-400    bg-red-400/10    border-red-400/20',
-    amber:  'text-amber-400  bg-amber-400/10  border-amber-400/20',
-    neutral:'text-slate-400  bg-slate-400/10  border-slate-400/20',
-  };
-  const textMap: Record<string, string> = {
-    indigo: 'text-indigo-300',
-    green:  'text-green-300',
-    red:    'text-red-300',
-    amber:  'text-amber-300',
-    neutral:'text-white',
-  };
-
-  return (
-    <div className="metric-card">
-      <div className="flex justify-between items-start gap-4">
-        <div className="flex flex-col gap-3">
-          <p className="label">{title}</p>
-          <p className={`text-[2.25rem] font-bold tracking-tight leading-none ${textMap[accent]}`}>{value}</p>
-          {sub && <p className="body-sm text-xs">{sub}</p>}
-        </div>
-        <div className={`p-2.5 rounded-10 border ${accentMap[accent]} flex-shrink-0`} style={{ borderRadius: 10 }}>
-          <Icon size={18} />
-        </div>
+export const MetricCard: React.FC<MetricCardProps> = ({
+  title, value, sub, trend, icon: Icon, accent = 'indigo'
+}) => (
+  <div className={`metric-card mc-${accent}`}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p className="t-label" style={{ marginBottom: 12 }}>{title}</p>
+        <p style={{
+          fontSize: '2.25rem', fontWeight: 800, letterSpacing: '-0.04em',
+          lineHeight: 1, color: ACCENT_TEXT[accent], marginBottom: 8,
+        }}>{value}</p>
+        {sub && <p className="t-micro">{sub}</p>}
+        {trend && (
+          <p style={{ fontSize: 11, fontWeight: 600, marginTop: 8, color: trend.up ? '#4ade80' : '#f87171' }}>
+            {trend.up ? '↑' : '↓'} {trend.value}
+          </p>
+        )}
+      </div>
+      <div style={{
+        width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+        background: ACCENT_ICON[accent], border: `1px solid ${ACCENT_ICON_BORDER[accent]}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: ACCENT_TEXT[accent],
+      }}>
+        <Icon size={18} />
       </div>
     </div>
-  );
-};
-
-// ─── SECTION CARD ─────────────────────────────────────────────────────────
-interface SectionCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  noPad?: boolean;
-}
-export const SectionCard: React.FC<SectionCardProps> = ({ children, className = '', noPad = false, ...props }) => (
-  <div className={`card ${noPad ? '' : 'p-0'} overflow-hidden ${className}`} {...props}>
-    {children}
   </div>
 );
 
-// ─── SECTION CARD HEADER ──────────────────────────────────────────────────
-interface SectionCardHeaderProps {
-  title: string;
+// ── SECTION CARD ────────────────────────────────────────────────────────────
+interface SectionCardProps {
+  title?: string;
   subtitle?: string;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  icon?: React.ComponentType<{ size?: number }>;
   action?: React.ReactNode;
+  children: React.ReactNode;
+  noPad?: boolean;
+  style?: React.CSSProperties;
+  className?: string;
+  footer?: React.ReactNode;
 }
-export const SectionCardHeader: React.FC<SectionCardHeaderProps> = ({ title, subtitle, icon: Icon, action }) => (
-  <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
-    <div className="flex items-center gap-2.5">
-      {Icon && <Icon size={15} className="text-slate-500" />}
-      <div>
-        <p className="heading-sm text-white">{title}</p>
-        {subtitle && <p className="body-sm mt-0.5">{subtitle}</p>}
+export const SectionCard: React.FC<SectionCardProps> = ({
+  title, subtitle, icon: Icon, action, children, noPad = false, style, className = '', footer,
+}) => (
+  <div className={`card-section ${className}`} style={style}>
+    {title && (
+      <div className="section-head">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {Icon && <div style={{ color: 'var(--text-tertiary)', display: 'flex' }}><Icon size={14} /></div>}
+          <div>
+            <p className="section-head-title">{title}</p>
+            {subtitle && <p className="section-head-sub">{subtitle}</p>}
+          </div>
+        </div>
+        {action && <div style={{ flexShrink: 0 }}>{action}</div>}
       </div>
+    )}
+    <div style={noPad ? {} : { padding: '0' }}>
+      {children}
     </div>
-    {action && <div>{action}</div>}
+    {footer && (
+      <div style={{ borderTop: '1px solid var(--border-default)' }}>
+        {footer}
+      </div>
+    )}
   </div>
 );
 
-// ─── EMPTY STATE ──────────────────────────────────────────────────────────
-interface EmptyStateProps {
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
+// ── PAGE HEADER ─────────────────────────────────────────────────────────────
+export const PageHeader: React.FC<{
+  title: string;
+  description?: string;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+}> = ({ title, description, badge, action }) => (
+  <div className="page-header">
+    <div className="page-header-left">
+      <div className="page-title-row">
+        <h1 className="t-h1">{title}</h1>
+        {badge}
+      </div>
+      {description && <p className="page-desc">{description}</p>}
+    </div>
+    {action && <div className="page-actions">{action}</div>}
+  </div>
+);
+
+// ── EMPTY STATE ──────────────────────────────────────────────────────────────
+export const EmptyState: React.FC<{
+  icon?: React.ComponentType<{ size?: number }>;
   title: string;
   description: string;
   action?: React.ReactNode;
-}
-export const EmptyState: React.FC<EmptyStateProps> = ({ icon: Icon = Inbox, title, description, action }) => (
-  <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-4 anim-fade-up">
-    <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-      <Icon size={22} className="text-slate-500" />
+}> = ({ icon: Icon = Inbox, title, description, action }) => (
+  <div className="empty-state anim-fade-up">
+    <div className="empty-icon-wrap">
+      <Icon size={24} />
     </div>
-    <div className="flex flex-col gap-1.5 max-w-xs">
-      <p className="heading-sm text-white">{title}</p>
-      <p className="body-sm leading-relaxed">{description}</p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 320 }}>
+      <p className="t-h4">{title}</p>
+      <p className="t-body" style={{ fontSize: 13, lineHeight: 1.6 }}>{description}</p>
     </div>
-    {action && <div className="mt-2">{action}</div>}
+    {action && <div style={{ marginTop: 4 }}>{action}</div>}
   </div>
 );
 
-// ─── LOADING SKELETON ─────────────────────────────────────────────────────
-export const SkeletonRow: React.FC<{ cols?: number }> = ({ cols = 4 }) => (
+// ── ERROR ALERT ─────────────────────────────────────────────────────────────
+export const ErrorAlert: React.FC<{
+  title?: string;
+  message: string;
+  action?: React.ReactNode;
+}> = ({ title = 'Error', message, action }) => (
+  <div className="alert alert-error anim-fade-up">
+    <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
+    <div style={{ flex: 1 }}>
+      <p style={{ fontWeight: 700, marginBottom: 2, color: 'var(--red-400)' }}>{title}</p>
+      <p style={{ fontSize: 12, color: 'var(--red-400)', opacity: 0.85 }}>{message}</p>
+      {action && <div style={{ marginTop: 10 }}>{action}</div>}
+    </div>
+  </div>
+);
+
+// ── SKELETON ROW ────────────────────────────────────────────────────────────
+export const SkeletonRow: React.FC<{ cols?: number }> = ({ cols = 5 }) => (
   <tr>
     {Array.from({ length: cols }).map((_, i) => (
-      <td key={i} className="px-4 py-3.5">
-        <div className={`skeleton h-4 ${i === 0 ? 'w-24' : i === cols - 1 ? 'w-16' : 'w-full'}`} />
+      <td key={i} style={{ padding: '14px 16px' }}>
+        <div className={`skeleton`} style={{ height: 14, width: i === 0 ? 100 : i === cols - 1 ? 60 : '80%' }} />
       </td>
     ))}
   </tr>
 );
 
-export const SkeletonMetricCard: React.FC = () => (
-  <div className="metric-card space-y-4">
-    <div className="flex justify-between">
-      <div className="skeleton h-3 w-20" />
-      <div className="skeleton h-8 w-8 rounded-lg" />
+export const SkeletonMetric: React.FC = () => (
+  <div className="metric-card mc-indigo" style={{ gap: 0 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div className="skeleton" style={{ height: 10, width: 80 }} />
+      <div className="skeleton" style={{ height: 36, width: 36, borderRadius: 10 }} />
     </div>
-    <div className="skeleton h-9 w-16" />
-    <div className="skeleton h-3 w-28" />
+    <div className="skeleton" style={{ height: 36, width: 70, marginBottom: 10 }} />
+    <div className="skeleton" style={{ height: 10, width: 110 }} />
   </div>
 );
 
 export const SkeletonCard: React.FC = () => (
-  <div className="card p-5 space-y-4">
-    <div className="skeleton h-4 w-32" />
-    <div className="skeleton h-3 w-full" />
-    <div className="skeleton h-3 w-3/4" />
-    <div className="flex gap-2 pt-2">
-      <div className="skeleton h-7 w-20 rounded-full" />
-      <div className="skeleton h-7 w-20 rounded-full" />
+  <div className="card" style={{ padding: 24 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div className="skeleton" style={{ height: 14, width: 120 }} />
+      <div className="skeleton" style={{ height: 22, width: 60, borderRadius: 99 }} />
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="skeleton" style={{ height: 12, width: '100%' }} />
+      <div className="skeleton" style={{ height: 12, width: '80%' }} />
+      <div className="skeleton" style={{ height: 12, width: '65%' }} />
     </div>
   </div>
 );
 
-// ─── JSON VIEWER ──────────────────────────────────────────────────────────
-export const JsonViewer: React.FC<{ data: any; label?: string }> = ({ data, label }) => {
+// ── JSON VIEWER ──────────────────────────────────────────────────────────────
+const syntaxHighlight = (data: any): string => {
+  const json = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|[{}[\],])/g,
+    (match) => {
+      let cls = 'json-number';
+      if (/^"/.test(match)) {
+        cls = /:$/.test(match) ? 'json-key' : 'json-string';
+      } else if (/true|false/.test(match)) {
+        cls = 'json-bool';
+      } else if (/null/.test(match)) {
+        cls = 'json-null';
+      } else if (/[{}[\],]/.test(match)) {
+        cls = 'json-bracket';
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
+};
+
+export const JsonViewer: React.FC<{ data: any; label?: string; maxHeight?: number }> = ({
+  data, label, maxHeight = 320
+}) => {
   const [copied, setCopied] = useState(false);
   const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  const html = syntaxHighlight(data);
 
   const copy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   return (
-    <div className="relative group">
-      {label && <p className="label mb-2">{label}</p>}
-      <div className="json-viewer">{text}</div>
+    <div style={{ position: 'relative' }}>
+      {label && <p className="t-label" style={{ marginBottom: 8 }}>{label}</p>}
+      <div className="json-viewer" style={{ maxHeight }}>
+        <pre
+          style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
       <button
         onClick={copy}
-        className="absolute top-2 right-2 btn-icon opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ width: 28, height: 28, borderRadius: 6 }}
-        title="Copy"
+        className="btn btn-icon btn-sm"
+        style={{
+          position: 'absolute', top: label ? 30 : 8, right: 8,
+          width: 26, height: 26, border: 'none',
+          background: 'var(--bg-elevated)', opacity: 0.9,
+        }}
+        title="Copy JSON"
       >
-        {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+        {copied ? <Check size={11} style={{ color: '#4ade80' }} /> : <Copy size={11} />}
       </button>
     </div>
   );
 };
 
-// ─── BUTTON ───────────────────────────────────────────────────────────────
+// ── BUTTON ──────────────────────────────────────────────────────────────────
+type BtnVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 interface BtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'ghost' | 'danger';
+  variant?: BtnVariant;
   loading?: boolean;
+  icon?: React.ComponentType<{ size?: number }>;
+  size?: 'sm' | 'md' | 'lg';
 }
-export const Btn: React.FC<BtnProps> = ({ variant = 'primary', loading = false, children, disabled, className = '', ...props }) => (
-  <button
-    className={`btn-${variant} ${className}`}
-    disabled={disabled || loading}
-    {...props}
-  >
-    {loading && <Loader2 size={13} className="spin" />}
-    {children}
-  </button>
-);
+export const Btn: React.FC<BtnProps> = ({
+  variant = 'primary', loading = false, icon: Icon, size = 'md',
+  children, disabled, className = '', ...rest
+}) => {
+  const sizeClass = size === 'sm' ? 'btn-sm' : size === 'lg' ? 'btn-lg' : '';
+  return (
+    <button
+      className={`btn btn-${variant} ${sizeClass} ${className}`}
+      disabled={disabled || loading}
+      {...rest}
+    >
+      {loading ? <Loader2 size={13} className="spin" /> : Icon ? <Icon size={13} /> : null}
+      {children}
+    </button>
+  );
+};
 
-// ─── PAGINATION BAR ───────────────────────────────────────────────────────
-interface PaginationProps {
-  page: number;
-  hasNext: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-  total?: number;
-}
-export const PaginationBar: React.FC<PaginationProps> = ({ page, hasNext, onPrev, onNext, total }) => (
-  <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--border)' }}>
-    <p className="label">
-      {total !== undefined ? `${total} results` : `Page ${page}`}
-    </p>
-    <div className="flex items-center gap-1.5">
-      <button className="btn-icon" onClick={onPrev} disabled={page === 1}>
-        <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
-      </button>
-      <span className="label px-2">{page}</span>
-      <button className="btn-icon" onClick={onNext} disabled={!hasNext}>
-        <ChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />
-      </button>
-    </div>
+// ── FORM PRIMITIVES ─────────────────────────────────────────────────────────
+export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: string }> = ({
+  label, hint, className = '', style, ...props
+}) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+    {label && <label className="form-label">{label}</label>}
+    <input className={`form-input ${className}`} style={style} {...props} />
+    {hint && <p className="form-hint">{hint}</p>}
   </div>
 );
 
-// ─── SELECT ───────────────────────────────────────────────────────────────
-interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export const Textarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; hint?: string }> = ({
+  label, hint, className = '', ...props
+}) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+    {label && <label className="form-label">{label}</label>}
+    <textarea className={`form-textarea ${className}`} {...props} />
+    {hint && <p className="form-hint">{hint}</p>}
+  </div>
+);
+
+export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement> & {
   label?: string;
   options: { label: string; value: string }[];
-}
-export const Select: React.FC<SelectProps> = ({ label, options, className = '', ...props }) => (
-  <div className={`flex flex-col gap-1 ${className}`}>
-    {label && <label className="label">{label}</label>}
-    <select className="input-base" style={{ appearance: 'none', cursor: 'pointer' }} {...props}>
-      {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+  hint?: string;
+}> = ({ label, options, hint, className = '', style, ...props }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+    {label && <label className="form-label">{label}</label>}
+    <select className={`form-select ${className}`} style={style} {...props}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+    {hint && <p className="form-hint">{hint}</p>}
   </div>
 );
 
-// ─── INPUT ────────────────────────────────────────────────────────────────
-interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  label?: string;
-}
-export const Input: React.FC<InputProps> = ({ label, className = '', ...props }) => (
-  <div className={`flex flex-col gap-1 ${className}`}>
-    {label && <label className="label">{label}</label>}
-    <input className="input-base" {...props} />
+// ── FILTER BAR ───────────────────────────────────────────────────────────────
+export const FilterBar: React.FC<{ children: React.ReactNode; onReset?: () => void }> = ({
+  children, onReset,
+}) => (
+  <div className="filter-bar">
+    {children}
+    {onReset && (
+      <Btn variant="ghost" size="sm" onClick={onReset} style={{ alignSelf: 'flex-end', minWidth: 60 }}>
+        <RefreshCw size={12} /> Reset
+      </Btn>
+    )}
   </div>
 );
 
-// ─── TEXTAREA ─────────────────────────────────────────────────────────────
-interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
-  label?: string;
-}
-export const Textarea: React.FC<TextareaProps> = ({ label, className = '', ...props }) => (
-  <div className={`flex flex-col gap-1 ${className}`}>
-    {label && <label className="label">{label}</label>}
-    <textarea className="input-base" style={{ resize: 'vertical', minHeight: 72 }} {...props} />
-  </div>
-);
-
-// ─── WORKFLOW CARD ────────────────────────────────────────────────────────
-interface WorkflowStep {
-  type: 'trigger' | 'condition' | 'action';
-  label: string;
-  sub?: string;
-}
-interface WorkflowCardProps {
-  name: string;
-  description?: string;
-  status: string;
-  steps: WorkflowStep[];
-  onConfigure?: () => void;
-}
-export const WorkflowCard: React.FC<WorkflowCardProps> = ({ name, description, status, steps, onConfigure }) => {
-  const typeStyles: Record<string, { dot: string; tag: string; label: string }> = {
-    trigger:   { dot: 'bg-indigo-400', tag: 'bg-indigo-400/10 text-indigo-300 border-indigo-400/20', label: 'Trigger' },
-    condition: { dot: 'bg-amber-400',  tag: 'bg-amber-400/10  text-amber-300  border-amber-400/20',  label: 'Filter' },
-    action:    { dot: 'bg-green-400',  tag: 'bg-green-400/10  text-green-300  border-green-400/20',  label: 'Action' },
-  };
+// ── PAGINATION BAR ──────────────────────────────────────────────────────────
+export const Pagination: React.FC<{
+  page: number; hasNext: boolean;
+  onPrev: () => void; onNext: () => void;
+  total?: number; limit?: number;
+}> = ({ page, hasNext, onPrev, onNext, total, limit }) => {
+  const showing = total !== undefined && limit !== undefined
+    ? `${(page - 1) * limit + 1}–${Math.min(page * limit, total)} of ${total}`
+    : `Page ${page}`;
 
   return (
-    <div className="card p-5 flex flex-col gap-4 anim-fade-up hover:border-slate-600/50 transition-all">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="heading-sm text-white leading-snug">{name}</p>
-          {description && <p className="body-sm mt-1 leading-relaxed">{description}</p>}
-        </div>
-        <StatusBadge status={status} />
+    <div className="pagination">
+      <span className="pagination-info">{showing}</span>
+      <div className="pagination-controls">
+        <button className="page-btn" onClick={onPrev} disabled={page <= 1}>
+          <ChevronDown size={13} style={{ transform: 'rotate(90deg)' }} />
+        </button>
+        <button className="page-btn current">{page}</button>
+        <button className="page-btn" onClick={onNext} disabled={!hasNext}>
+          <ChevronDown size={13} style={{ transform: 'rotate(-90deg)' }} />
+        </button>
       </div>
-
-      {/* Workflow Steps */}
-      <div className="flex flex-col" style={{ paddingLeft: 8 }}>
-        {steps.map((step, i) => {
-          const s = typeStyles[step.type] || typeStyles.action;
-          const isLast = i === steps.length - 1;
-          return (
-            <div key={i} className="relative flex flex-col">
-              {/* Step row */}
-              <div className="flex items-center gap-2.5">
-                {/* Left column: dot + vertical line */}
-                <div className="flex flex-col items-center" style={{ width: 20, flexShrink: 0 }}>
-                  <div className={`w-2 h-2 rounded-full ${s.dot} flex-shrink-0`} />
-                  {!isLast && <div className="flex-1 w-px mt-1" style={{ height: 16, background: 'var(--border-light)' }} />}
-                </div>
-                {/* Content */}
-                <div className="wf-step flex items-center gap-2 flex-1 min-w-0 mb-2">
-                  <span className={`label px-1.5 py-0.5 rounded-md border ${s.tag} shrink-0`}>
-                    {s.label}
-                  </span>
-                  <span className="text-xs font-medium text-white truncate">{step.label}</span>
-                  {step.sub && <span className="text-xs text-slate-500 truncate hidden sm:block">{step.sub}</span>}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer */}
-      {onConfigure && (
-        <div className="flex justify-end pt-1" style={{ borderTop: '1px solid var(--border)' }}>
-          <button className="btn-ghost" style={{ padding: '5px 10px', fontSize: '0.75rem' }} onClick={onConfigure}>
-            <ArrowRight size={13} /> Configure
-          </button>
-        </div>
-      )}
     </div>
   );
 };
 
-// ─── EXECUTION CARD ───────────────────────────────────────────────────────
-interface ExecStep {
+// ── MODAL ────────────────────────────────────────────────────────────────────
+export const Modal: React.FC<{
+  open: boolean; onClose: () => void;
+  title: string; subtitle?: string;
+  footer?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  children: React.ReactNode;
+}> = ({ open, onClose, title, subtitle, footer, size = 'md', children }) => {
+  if (!open) return null;
+  const maxW = { sm: 420, md: 560, lg: 720, xl: 900 }[size];
+  return (
+    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-panel" style={{ maxWidth: maxW, position: 'relative' }}>
+        <div className="modal-header" style={{ paddingBottom: 16 }}>
+          <p className="modal-title">{title}</p>
+          {subtitle && <p className="modal-subtitle">{subtitle}</p>}
+          <button className="btn btn-icon btn-sm modal-close" onClick={onClose}>
+            <XCircle size={14} />
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-footer">{footer}</div>}
+      </div>
+    </div>
+  );
+};
+
+// ── WORKFLOW CARD ───────────────────────────────────────────────────────────
+interface WFStep { type: 'trigger' | 'condition' | 'action'; label: string; sub?: string; }
+export const WorkflowCard: React.FC<{
+  name: string; description?: string; status: string;
+  steps: WFStep[]; onView?: () => void;
+}> = ({ name, description, status, steps, onView }) => (
+  <div className="card" style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 18, height: '100%' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p className="t-h4" style={{ marginBottom: 4, lineHeight: 1.4 }}>{name}</p>
+        {description && <p className="t-small" style={{ lineHeight: 1.6 }}>{description}</p>}
+      </div>
+      <StatusBadge status={status} />
+    </div>
+
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {steps.map((step, i) => {
+        const isLast = i === steps.length - 1;
+        const tagCls = `wf-tag wf-tag-${step.type}`;
+        return (
+          <div key={i}>
+            <div className="wf-step">
+              <span className={tagCls}>{step.type}</span>
+              <span className="t-h4" style={{ fontWeight: 600, fontSize: 12 }}>{step.label}</span>
+              {step.sub && (
+                <span className="mono t-micro" style={{ marginLeft: 'auto', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {step.sub}
+                </span>
+              )}
+            </div>
+            {!isLast && <div className="wf-connector" />}
+          </div>
+        );
+      })}
+    </div>
+
+    {onView && (
+      <div style={{ marginTop: 'auto', paddingTop: 14, borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end' }}>
+        <Btn variant="ghost" size="sm" onClick={onView} icon={ArrowRight}>View Config</Btn>
+      </div>
+    )}
+  </div>
+);
+
+// ── EXECUTION CARD (expandable) ─────────────────────────────────────────────
+export interface ExecStep {
   actionIndex: number;
   actionType: string;
   status: string;
@@ -374,7 +478,7 @@ interface ExecStep {
   responsePayload?: any;
   executedAt: string;
 }
-interface ExecutionCardProps {
+export const ExecutionCard: React.FC<{
   id: string;
   ruleName: string;
   webhookId: string;
@@ -386,158 +490,150 @@ interface ExecutionCardProps {
   steps: ExecStep[];
   onReplay?: () => void;
   replayLoading?: boolean;
-}
-export const ExecutionCard: React.FC<ExecutionCardProps> = ({
-  id, ruleName, webhookId, status, durationMs, retryCount,
-  startedAt, error, steps, onReplay, replayLoading = false,
-}) => {
+}> = ({ id, ruleName, webhookId, status, durationMs, retryCount, startedAt, error, steps, onReplay, replayLoading }) => {
   const [open, setOpen] = useState(false);
   const [openStep, setOpenStep] = useState<number | null>(null);
 
+  const statusIcon = {
+    completed:  <CheckCircle2 size={17} style={{ color: 'var(--green-400)', flexShrink: 0 }} />,
+    failed:     <XCircle      size={17} style={{ color: 'var(--red-400)',   flexShrink: 0 }} />,
+    processing: <Zap          size={17} style={{ color: '#818cf8',          flexShrink: 0 }} />,
+    retrying:   <RotateCcw    size={17} style={{ color: 'var(--amber-400)', flexShrink: 0 }} />,
+  }[status] ?? <Clock size={17} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />;
+
   return (
     <div className="event-row anim-fade-up">
-      {/* Collapsed header */}
-      <div className="event-row-header" onClick={() => setOpen(!open)}>
-        {/* Status col */}
-        <div className="flex-shrink-0">
-          {status === 'completed' && <CheckCircle2 size={18} className="text-green-400" />}
-          {status === 'failed'    && <XCircle      size={18} className="text-red-400" />}
-          {status === 'processing'&& <Zap          size={18} className="text-indigo-400" />}
-          {status === 'retrying'  && <RotateCcw    size={18} className="text-amber-400" />}
-          {(status === 'queued' || status === 'pending') && <Clock size={18} className="text-slate-500" />}
-        </div>
+      {/* ── Row head ── */}
+      <div className="event-row-head" onClick={() => setOpen(v => !v)}>
+        {statusIcon}
 
-        {/* Main info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="heading-sm text-white truncate">{ruleName}</p>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className="t-h4" style={{ fontSize: 13 }}>{ruleName}</span>
             <StatusBadge status={status} pulse={status === 'processing'} />
           </div>
-          <p className="body-sm text-xs mt-0.5 mono truncate">{id}</p>
+          <p className="mono t-micro" style={{ marginTop: 2 }}>{id}</p>
         </div>
 
-        {/* Stats */}
-        <div className="hidden sm:flex items-center gap-6 text-right flex-shrink-0">
-          <div>
-            <p className="text-xs font-semibold text-white">{durationMs}ms</p>
-            <p className="label">duration</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{fmtMs(durationMs)}</p>
+            <p className="t-micro">duration</p>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-white">{retryCount}</p>
-            <p className="label">retries</p>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{steps.length}</p>
+            <p className="t-micro">steps</p>
           </div>
-          <div>
-            <p className="text-xs font-semibold text-slate-400">{steps.length}</p>
-            <p className="label">steps</p>
+          <div style={{ textAlign: 'right' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{retryCount}</p>
+            <p className="t-micro">retries</p>
           </div>
-        </div>
-
-        <div className="flex-shrink-0 text-slate-500">
-          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {open ? <ChevronUp size={14} style={{ color: 'var(--text-tertiary)' }} />
+                : <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />}
         </div>
       </div>
 
-      {/* Expanded body */}
+      {/* ── Expanded body ── */}
       {open && (
-        <div className="anim-fade-up" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-base)', padding: '20px 20px 20px 20px' }}>
-          {/* Meta row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
-            <div>
-              <p className="label mb-1">Started</p>
-              <p className="text-xs font-medium text-slate-300">{new Date(startedAt).toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="label mb-1">Webhook ID</p>
-              <p className="mono text-slate-400 truncate">{webhookId}</p>
-            </div>
-            <div>
-              <p className="label mb-1">Duration</p>
-              <p className="text-xs font-medium text-slate-300">{durationMs}ms</p>
-            </div>
-            <div>
-              <p className="label mb-1">Retries</p>
-              <p className="text-xs font-medium text-slate-300">{retryCount}</p>
-            </div>
+        <div className="event-row-body anim-fade-up">
+          {/* Meta grid */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 0, background: 'var(--bg-elevated)', borderRadius: 12,
+            border: '1px solid var(--border-default)', marginBottom: 20, overflow: 'hidden',
+          }}>
+            {[
+              { k: 'Execution ID', v: <span className="mono" style={{ fontSize: 11 }}>{id.slice(0,14)}…</span> },
+              { k: 'Started',      v: fmtDate(startedAt) },
+              { k: 'Duration',     v: fmtMs(durationMs) },
+              { k: 'Retries',      v: String(retryCount) },
+              { k: 'Webhook',      v: <span className="mono" style={{ fontSize: 11 }}>{webhookId.slice(0,14)}…</span> },
+              { k: 'Steps Run',    v: String(steps.length) },
+            ].map(({ k, v }) => (
+              <div key={k} style={{ padding: '12px 16px', borderRight: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+                <p className="t-label" style={{ marginBottom: 4 }}>{k}</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{v}</p>
+              </div>
+            ))}
           </div>
+
+          {/* Error banner */}
+          {error && (
+            <div className="alert alert-error" style={{ marginBottom: 20 }}>
+              <XCircle size={16} style={{ flexShrink: 0 }} />
+              <div>
+                <p style={{ fontWeight: 700, marginBottom: 4, fontSize: 12 }}>Execution Failed</p>
+                <p className="mono" style={{ fontSize: 11, lineHeight: 1.7, wordBreak: 'break-all' }}>{error}</p>
+              </div>
+            </div>
+          )}
 
           {/* Replay CTA */}
           {status === 'failed' && onReplay && (
-            <div className="flex items-center justify-between gap-4 rounded-xl mb-5 p-4"
-              style={{ background: 'rgba(88,101,242,0.06)', border: '1px solid rgba(88,101,242,0.15)' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+              background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)',
+              borderRadius: 14, padding: '16px 20px', marginBottom: 20,
+            }}>
               <div>
-                <p className="heading-sm text-white">Retry this execution</p>
-                <p className="body-sm mt-0.5">Re-run failed steps using the original payload — completed steps are skipped.</p>
+                <p className="t-h4" style={{ marginBottom: 3 }}>Replay Failed Execution</p>
+                <p className="t-small">Re-enqueue with the original payload. Steps that already completed will be skipped.</p>
               </div>
-              <Btn variant="primary" onClick={onReplay} loading={replayLoading} className="shrink-0">
-                <RotateCcw size={13} /> Replay
+              <Btn variant="primary" onClick={onReplay} loading={replayLoading} icon={RotateCcw} style={{ flexShrink: 0 }}>
+                Replay
               </Btn>
             </div>
           )}
 
-          {/* Error trace */}
-          {error && (
-            <div className="rounded-xl mb-5 p-4" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
-              <p className="label text-red-400 mb-1.5">Fatal Error</p>
-              <p className="mono text-red-300 leading-relaxed break-all text-xs">{error}</p>
-            </div>
+          {/* Steps timeline */}
+          <p className="t-label" style={{ marginBottom: 14 }}>Action Timeline · {steps.length} step{steps.length !== 1 ? 's' : ''}</p>
+
+          {steps.length === 0 && (
+            <p className="t-body" style={{ fontStyle: 'italic', fontSize: 12 }}>No steps logged — execution may have crashed before the action loop.</p>
           )}
 
-          {/* Steps timeline */}
-          <p className="label mb-4">Action Timeline ({steps.length} steps)</p>
-          <div className="relative ml-3 space-y-3">
-            {steps.length === 0 && (
-              <p className="body-sm italic">No steps executed — crash occurred before action loop.</p>
-            )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {steps.map((step, idx) => {
-              const isStepOpen = openStep === idx;
-              const isSuccess = step.status === 'success';
+              const isOpen = openStep === idx;
+              const ok = step.status === 'success';
               return (
-                <div key={idx} className="relative flex gap-4">
-                  {/* Vertical line */}
-                  {idx < steps.length - 1 && (
-                    <div style={{ position: 'absolute', left: 11, top: 24, width: 1, bottom: -12, background: 'var(--border)' }} />
-                  )}
-                  {/* Dot */}
-                  <div className={`timeline-dot flex-shrink-0 ${
-                    isSuccess ? 'bg-green-400/10 border-green-400 text-green-400' : 'bg-red-400/10 border-red-400 text-red-400'
-                  }`} style={{ marginTop: 2 }}>
-                    {isSuccess ? <Check size={10} /> : <XCircle size={10} />}
+                <div key={idx} className="step-card">
+                  <div className="step-card-head" onClick={() => setOpenStep(isOpen ? null : idx)}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {ok
+                        ? <CheckCircle2 size={14} style={{ color: 'var(--green-400)', flexShrink: 0 }} />
+                        : <XCircle      size={14} style={{ color: 'var(--red-400)',   flexShrink: 0 }} />}
+                      <span className="t-label" style={{
+                        padding: '1px 7px', borderRadius: 4,
+                        background: 'var(--bg-canvas)', border: '1px solid var(--border-subtle)',
+                        color: 'var(--text-tertiary)',
+                      }}>step {idx + 1}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        {step.actionType}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {fmtMs(step.durationMs)}
+                      </span>
+                      <StatusBadge status={step.status} />
+                      {isOpen ? <ChevronUp size={12} style={{ color: 'var(--text-tertiary)' }} />
+                               : <ChevronDown size={12} style={{ color: 'var(--text-tertiary)' }} />}
+                    </div>
                   </div>
-
-                  {/* Card */}
-                  <div className="flex-1 min-w-0 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                    <div
-                      className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer"
-                      style={{ background: 'var(--bg-surface)' }}
-                      onClick={() => setOpenStep(isStepOpen ? null : idx)}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="label px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                          step {idx + 1}
-                        </span>
-                        <span className="text-xs font-semibold text-white uppercase tracking-wider">{step.actionType}</span>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="text-xs text-slate-500">{step.durationMs}ms</span>
-                        <StatusBadge status={step.status} />
-                        {isStepOpen ? <ChevronUp size={13} className="text-slate-500" /> : <ChevronDown size={13} className="text-slate-500" />}
+                  {isOpen && (
+                    <div className="step-card-body anim-fade-in">
+                      {step.error && (
+                        <div className="alert alert-error" style={{ marginBottom: 12 }}>
+                          <p className="mono" style={{ fontSize: 11, wordBreak: 'break-all' }}>{step.error}</p>
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <JsonViewer data={step.requestPayload  ?? {}} label="Request Payload" maxHeight={220} />
+                        <JsonViewer data={step.responsePayload ?? {}} label="Response Payload" maxHeight={220} />
                       </div>
                     </div>
-                    {isStepOpen && (
-                      <div className="p-4 space-y-3 anim-fade-up" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-base)' }}>
-                        {step.error && (
-                          <div className="p-3 rounded-lg text-xs mono text-red-300 leading-relaxed break-all"
-                            style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
-                            {step.error}
-                          </div>
-                        )}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <JsonViewer data={step.requestPayload ?? {}} label="Request" />
-                          <JsonViewer data={step.responsePayload ?? {}} label="Response" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -548,86 +644,71 @@ export const ExecutionCard: React.FC<ExecutionCardProps> = ({
   );
 };
 
-// ─── EVENT CARD ───────────────────────────────────────────────────────────
-interface EventCardProps {
-  id?: string;
-  source: string;
-  eventType: string;
-  eventIdentifier: string;
-  status: string;
-  retryCount: number;
-  maxRetries: number;
-  createdAt: string;
-  error?: string;
-  headers: any;
-  payload: any;
-}
-export const EventCard: React.FC<EventCardProps> = ({
-  id: _id, source, eventType, eventIdentifier, status,
-  retryCount, maxRetries, createdAt, error, headers, payload,
-}) => {
+// ── EVENT CARD ───────────────────────────────────────────────────────────────
+export const EventCard: React.FC<{
+  source: string; eventType: string; eventIdentifier: string;
+  status: string; retryCount: number; maxRetries: number;
+  createdAt: string; error?: string; headers: any; payload: any;
+}> = ({ source, eventType, eventIdentifier, status, retryCount, maxRetries, createdAt, error, headers, payload }) => {
   const [open, setOpen] = useState(false);
-
-  const sourceColor: Record<string, string> = {
-    stripe: 'text-violet-400 bg-violet-400/10 border-violet-400/20',
-    github: 'text-slate-200 bg-slate-200/10 border-slate-200/20',
-    shopify:'text-green-400  bg-green-400/10  border-green-400/20',
-    slack:  'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
-  };
-  const srcKey = source.toLowerCase();
-  const srcStyle = sourceColor[srcKey] || 'text-indigo-400 bg-indigo-400/10 border-indigo-400/20';
 
   return (
     <div className="event-row anim-fade-up">
-      <div className="event-row-header" onClick={() => setOpen(!open)}>
-        {/* Source chip */}
-        <div className={`flex-shrink-0 px-2.5 py-1 rounded-lg border text-xs font-bold uppercase tracking-wider ${srcStyle}`} style={{ minWidth: 60, textAlign: 'center' }}>
-          {source}
+      <div className="event-row-head" onClick={() => setOpen(v => !v)}>
+        <SourceChip source={source} />
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p className="t-h4" style={{ fontSize: 13, marginBottom: 2 }}>{eventType}</p>
+          <p className="mono t-micro">{eventIdentifier}</p>
         </div>
 
-        {/* Event info */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">{eventType}</p>
-          <p className="mono text-slate-500 text-xs mt-0.5 truncate">{eventIdentifier}</p>
-        </div>
-
-        {/* Right side */}
-        <div className="flex items-center gap-4 flex-shrink-0">
-          <span className="hidden sm:block text-xs text-slate-500 font-mono">
-            {new Date(createdAt).toLocaleTimeString()}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
           {retryCount > 0 && (
-            <span className="hidden sm:block text-xs text-slate-500">
+            <span style={{ fontSize: 11, color: 'var(--amber-400)', fontWeight: 600 }}>
               {retryCount}/{maxRetries} retries
             </span>
           )}
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{fmtDate(createdAt)}</span>
           <StatusBadge status={status} />
-          <div className="text-slate-500">
-            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </div>
+          {open ? <ChevronUp size={14} style={{ color: 'var(--text-tertiary)' }} />
+                : <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />}
         </div>
       </div>
 
       {open && (
-        <div className="p-5 space-y-5 anim-fade-up" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-base)' }}>
-          {/* Metadata grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 rounded-xl p-4" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-            <div><p className="label mb-1">Source</p><p className="text-xs font-medium text-slate-300">{source}</p></div>
-            <div><p className="label mb-1">Event Type</p><p className="text-xs font-medium text-slate-300">{eventType}</p></div>
-            <div><p className="label mb-1">Received</p><p className="text-xs font-medium text-slate-300">{new Date(createdAt).toLocaleString()}</p></div>
-            <div><p className="label mb-1">Retries</p><p className="text-xs font-medium text-slate-300">{retryCount} / {maxRetries}</p></div>
+        <div className="event-row-body anim-fade-in">
+          {/* Meta */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-default)',
+            borderRadius: 12, overflow: 'hidden', marginBottom: 16,
+          }}>
+            {[
+              { k: 'Source',    v: source },
+              { k: 'Event Type',v: eventType },
+              { k: 'Received',  v: fmtDate(createdAt) },
+              { k: 'Retries',   v: `${retryCount} / ${maxRetries}` },
+            ].map(({ k, v }) => (
+              <div key={k} style={{ padding: '11px 16px', borderRight: '1px solid var(--border-subtle)' }}>
+                <p className="t-label" style={{ marginBottom: 3 }}>{k}</p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{v}</p>
+              </div>
+            ))}
           </div>
 
           {error && (
-            <div className="p-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)' }}>
-              <p className="label text-red-400 mb-1.5">Processing Error</p>
-              <p className="mono text-red-300 text-xs leading-relaxed break-all">{error}</p>
+            <div className="alert alert-error" style={{ marginBottom: 16 }}>
+              <XCircle size={14} style={{ flexShrink: 0 }} />
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 12, marginBottom: 3 }}>Processing Error</p>
+                <p className="mono" style={{ fontSize: 11, wordBreak: 'break-all', lineHeight: 1.7 }}>{error}</p>
+              </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <JsonViewer data={headers} label="Headers" />
-            <JsonViewer data={payload}  label="Payload" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <JsonViewer data={headers} label="Headers"  maxHeight={240} />
+            <JsonViewer data={payload}  label="Payload" maxHeight={240} />
           </div>
         </div>
       )}
@@ -635,51 +716,30 @@ export const EventCard: React.FC<EventCardProps> = ({
   );
 };
 
-// ─── FILTER BAR ───────────────────────────────────────────────────────────
-interface FilterBarProps {
-  children: React.ReactNode;
-  onReset?: () => void;
-}
-export const FilterBar: React.FC<FilterBarProps> = ({ children, onReset }) => (
-  <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
-    {children}
-    {onReset && (
-      <button className="btn-ghost" style={{ padding: '7px 12px', height: 34, alignSelf: 'flex-end' }} onClick={onReset}>
-        Reset
-      </button>
-    )}
-  </div>
-);
-
-// ─── MODAL ────────────────────────────────────────────────────────────────
-interface ModalProps {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  subtitle?: string;
-  footer?: React.ReactNode;
-  size?: 'md' | 'lg' | 'xl';
-  children: React.ReactNode;
-}
-export const Modal: React.FC<ModalProps> = ({ open, onClose, title, subtitle, footer, size = 'md', children }) => {
-  if (!open) return null;
-  const maxW: Record<string, string> = { md: '540px', lg: '680px', xl: '820px' };
-
+// ── STAT DISTRIBUTION ───────────────────────────────────────────────────────
+export const StatDistribution: React.FC<{
+  items: { label: string; value: number; status: StatusType }[];
+}> = ({ items }) => {
+  const total = items.reduce((s, i) => s + (i.value || 0), 0);
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-panel" style={{ maxWidth: maxW[size] }}>
-        <div className="modal-header">
-          <div>
-            <p className="heading-lg text-white">{title}</p>
-            {subtitle && <p className="body-sm mt-0.5">{subtitle}</p>}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {items.map(({ label, value, status }) => {
+        const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+        return (
+          <div key={label} className="stat-row">
+            <StatusBadge status={status} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                background: status === 'completed' ? 'var(--green-500)' : status === 'failed' ? 'var(--red-500)' : status === 'processing' ? 'var(--accent-500)' : status === 'retrying' ? 'var(--amber-500)' : 'var(--text-tertiary)',
+                height: 4, borderRadius: 2, width: Math.max(pct * 0.8, 4), opacity: 0.65,
+              }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', minWidth: 24, textAlign: 'right' }}>{value}</span>
+            </div>
           </div>
-          <button className="btn-icon" onClick={onClose}>
-            <XCircle size={16} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-footer">{footer}</div>}
-      </div>
+        );
+      })}
     </div>
   );
 };
+
+export { fmtDate, fmtMs };

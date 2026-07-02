@@ -117,10 +117,14 @@ export class ExecutionsService {
     if (query.webhookEventId) filters.webhookEventId = query.webhookEventId;
     if (query.status) filters.status = query.status;
 
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+
     return this.executionModel
       .find(filters)
       .sort({ createdAt: -1 })
-      .limit(100)
+      .skip((page - 1) * limit)
+      .limit(limit)
       .exec();
   }
 

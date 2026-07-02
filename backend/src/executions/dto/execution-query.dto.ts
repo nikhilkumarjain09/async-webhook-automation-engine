@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsInt, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ExecutionQueryDto {
   @IsString()
@@ -9,7 +10,19 @@ export class ExecutionQueryDto {
   @IsOptional()
   webhookEventId?: string;
 
-  @IsEnum(['running', 'success', 'failed', 'partial_success'])
+  @IsEnum(['queued', 'processing', 'completed', 'failed', 'retrying'])
   @IsOptional()
   status?: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  page?: number;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number;
 }
