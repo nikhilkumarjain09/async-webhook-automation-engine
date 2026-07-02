@@ -93,6 +93,9 @@ export class AutomationRule {
     index: true,
   })
   status: string;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  payloadSchema?: Record<string, string>;
 }
 
 export const AutomationRuleSchema = SchemaFactory.createForClass(AutomationRule);

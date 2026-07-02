@@ -86,6 +86,15 @@ export class TenantService implements OnApplicationBootstrap {
     return tenant;
   }
 
+  async findByIdWithApiKey(id: string): Promise<Tenant> {
+    this.logger.log(`Finding tenant by ID with API key: ${id}`);
+    const tenant = await this.tenantModel.findById(id).select('+apiKey').exec();
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+    return tenant;
+  }
+
   async update(id: string, updateTenantDto: UpdateTenantDto): Promise<Tenant> {
     this.logger.log(`Updating tenant with ID: ${id}`);
     const updated = await this.tenantModel

@@ -17,6 +17,9 @@ export class TenantSettingsSchema {
     match: [/^\S+@\S+\.\S+$/, 'Please enter a valid email address'],
   })
   alertEmail?: string;
+
+  @Prop({ type: Map, of: String, default: {} })
+  webhookSecrets: Map<string, string>;
 }
 
 @Schema({ timestamps: true })

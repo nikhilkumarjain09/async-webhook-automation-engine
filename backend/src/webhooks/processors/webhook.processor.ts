@@ -127,6 +127,9 @@ export class WebhookProcessor extends WorkerHost {
 
         const startTime = Date.now();
         try {
+          // Validate incoming webhook payload matches the rule schema constraints
+          this.validatePayloadSchema(event.payload, rule.payloadSchema);
+
           // Sort actions by execution order
           const sortedActions = [...rule.actions].sort((a, b) => a.order - b.order);
 
@@ -247,6 +250,19 @@ export class WebhookProcessor extends WorkerHost {
       if (acc === undefined || acc === null) return undefined;
       return acc[part];
     }, obj);
+  }
+
+  private validatePayloadSchema(payload: any, schema?: Record<string, string>) {
+    if (!schema) return;
+    for (const [key, expectedType] of Object.entries(schema)) {
+      const val = this.getValueByPath(payload, key);
+      if (val === undefined || val === null) {
+        throw new NonRetryableActionException(`Validation failed: missing required field '${key}' in payload`);
+      }
+      if (typeof val !== expectedType) {
+        throw new NonRetryableActionException(`Validation failed: field '${key}' expected type '${expectedType}', got '${typeof val}'`);
+      }
+    }
   }
 
   private compileTemplates(config: any, payload: any): any {

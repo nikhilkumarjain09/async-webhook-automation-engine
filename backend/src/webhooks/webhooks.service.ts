@@ -1,15 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { createHash } from 'crypto';
+import * as crypto from 'crypto';
 import { WebhookEvent, WebhookEventDocument } from './schemas/webhook-event.schema';
 import { ReplayHistory, ReplayHistoryDocument } from './schemas/replay-history.schema';
 import { CreateReplayDto } from './dto/create-replay.dto';
 import { WebhookQueryDto } from './dto/webhook-query.dto';
 import { ReplayQueryDto } from './dto/replay-query.dto';
 import { ExecutionsService } from '../executions/executions.service';
+import { TenantService } from '../tenant/tenant.service';
 import { AppLogger } from '../common/logger/logger.service';
 
 @Injectable()
@@ -22,6 +24,7 @@ export class WebhooksService {
     @InjectQueue('webhook-queue')
     private readonly webhookQueue: Queue,
     private readonly executionsService: ExecutionsService,
+    private readonly tenantService: TenantService,
     private readonly logger: AppLogger,
   ) {
     this.logger.setContext('WebhooksService');
@@ -38,6 +41,16 @@ export class WebhooksService {
     // Reject malformed payloads (must be non-empty object)
     if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
       throw new BadRequestException('Payload must be a non-empty JSON object');
+    }
+
+    // Resolve Tenant webhook secrets and perform signature validation
+    const tenant = await this.tenantService.findById(tenantId);
+    const secret = tenant.settings?.webhookSecrets?.get
+      ? tenant.settings.webhookSecrets.get(source)
+      : (tenant.settings?.webhookSecrets as any)?.[source];
+
+    if (!this.verifySignature(source, payload, headers, secret)) {
+      throw new UnauthorizedException(`Webhook signature verification failed for source '${source}'`);
     }
 
     // Heuristically extract the event type from payload or headers
@@ -297,5 +310,102 @@ export class WebhooksService {
     const hash = createHash('sha256');
     hash.update(JSON.stringify(payload) + source + eventType);
     return `hash_${hash.digest('hex')}`;
+  }
+
+  private verifySignature(
+    source: string,
+    payload: Record<string, any>,
+    headers: Record<string, string>,
+    secret?: string,
+  ): boolean {
+    if (!secret) {
+      // Backwards compatibility for dev/seeding/tests: skip verification if secret is not set
+      this.logger.warn(`Signature verification skipped for source ${source}: No secret key configured in Tenant settings.`);
+      return true;
+    }
+
+    const rawBodyString = JSON.stringify(payload);
+
+    try {
+      if (source === 'stripe') {
+        const stripeSig = headers['stripe-signature'];
+        if (!stripeSig) return false;
+
+        const parts = stripeSig.split(',');
+        const timestampPart = parts.find(p => p.trim().startsWith('t='));
+        const signaturePart = parts.find(p => p.trim().startsWith('v1='));
+        if (!timestampPart || !signaturePart) return false;
+
+        const timestamp = timestampPart.trim().substring(2);
+        const signature = signaturePart.trim().substring(3);
+
+        const signingPayload = `${timestamp}.${rawBodyString}`;
+        const computedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(signingPayload)
+          .digest('hex');
+
+        return crypto.timingSafeEqual(Buffer.from(computedSignature), Buffer.from(signature));
+      }
+
+      if (source === 'shopify') {
+        const shopifySig = headers['x-shopify-hmac-sha256'];
+        if (!shopifySig) return false;
+
+        const computedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(rawBodyString)
+          .digest('base64');
+
+        return crypto.timingSafeEqual(Buffer.from(computedSignature), Buffer.from(shopifySig));
+      }
+
+      if (source === 'github') {
+        const githubSig = headers['x-hub-signature-256'];
+        if (!githubSig) return false;
+
+        const signature = githubSig.replace('sha256=', '');
+        const computedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(rawBodyString)
+          .digest('hex');
+
+        return crypto.timingSafeEqual(Buffer.from(computedSignature), Buffer.from(signature));
+      }
+
+      if (source === 'hubspot') {
+        const hubspotSig = headers['x-hubspot-signature'];
+        if (!hubspotSig) return false;
+
+        const computedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(rawBodyString)
+          .digest('hex');
+
+        return hubspotSig === computedSignature;
+      }
+
+      if (source === 'salesforce') {
+        const sfSig = headers['x-salesforce-signature'];
+        if (!sfSig) return false;
+
+        const computedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(rawBodyString)
+          .digest('hex');
+
+        return sfSig === computedSignature;
+      }
+
+      const authHeader = headers['authorization'] || headers['x-api-signature'];
+      if (authHeader) {
+        return authHeader.includes(secret);
+      }
+    } catch (err) {
+      this.logger.error(`Error during signature verification for source ${source}:`, err);
+      return false;
+    }
+
+    return true;
   }
 }
