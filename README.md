@@ -326,7 +326,76 @@ npm run dev
 
 ---
 
-## 11. Environment Variables
+## 11. Database Configuration
+
+The application supports multiple MongoDB configurations depending on your evaluation or development workflow.
+
+### Option 1 – Docker (Recommended)
+
+This is the default setup for reviewers. Running:
+
+```bash
+docker-compose up --build
+```
+
+automatically starts all required services including:
+* MongoDB
+* Redis
+* Backend API Gateway
+* Frontend Dashboard
+
+No local MongoDB installation is required. Docker configures the MongoDB container automatically and the backend connects to it using the configured environment variable.
+
+The Docker connection string inside the environment is:
+```env
+MONGO_URI=mongodb://mongodb:27017/webhook-engine
+```
+*Note: The hostname is `mongodb` instead of `localhost` because Docker containers communicate across the bridge network using their service names.*
+
+---
+
+### Option 2 – Local MongoDB
+
+Developers can use their own locally installed MongoDB instance instead of the Docker container. 
+
+The local connection string configuration inside the environment is:
+```env
+MONGO_URI=mongodb://localhost:27017/webhook-engine
+```
+This configuration should be used when the backend is running directly on the host machine rather than inside the Docker virtual network.
+
+---
+
+### Option 3 – MongoDB Atlas or Remote MongoDB
+
+The application can connect to any remote MongoDB instance (such as MongoDB Atlas) by simply updating the environment variable. 
+
+For example, update the connection URI in `.env`:
+```env
+MONGO_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/webhook-engine?retryWrites=true&w=majority
+```
+No application source code changes are required. Simply update the environment variable, and the NestJS database bootstrapper will mount the remote cluster.
+
+---
+
+### Switching Between Configurations
+
+The application never hardcodes the database connection string. It always reads the target cluster from the `MONGO_URI` environment variable. Changing this value is sufficient to switch between:
+* Docker MongoDB
+* Local MongoDB
+* MongoDB Atlas
+* Any remote MongoDB deployment
+
+---
+
+### Developer Notes
+
+* If the backend runs inside Docker, `localhost` refers to the backend container itself, not the developer's machine. Therefore, Docker deployments must use the Docker bridge network service name (`mongodb`) in the connection string.
+* When running the backend outside Docker (on the host machine), `localhost` or the loopback IP (`127.0.0.1`) should be used instead.
+
+---
+
+## 12. Environment Variables
 
 To set up local configurations, copy the `.env.example` file in the `backend/` directory:
 
@@ -349,7 +418,7 @@ cp .env.example .env
 
 ---
 
-## 12. Testing & Verification
+## 13. Testing & Verification
 
 We provide validation scripts to verify queues, databases, workers, and frontend operations.
 
@@ -373,7 +442,7 @@ node testing/simulate.js
 
 ---
 
-## 13. Key Design Decisions & Trade-offs
+## 14. Key Design Decisions & Trade-offs
 
 - **NestJS vs Express:** NestJS provides standard, highly modular architecture out of the box, facilitating dependency injection, request guards, validation pipes, and error filters.
 - **BullMQ vs Custom Redis Queue:** BullMQ is built on top of robust Redis Lua scripts, providing built-in concurrency controls, stalled job recovery, visibility timeouts, and exponential backoff parameters.
@@ -386,7 +455,7 @@ node testing/simulate.js
 
 ---
 
-## 14. Known Limitations
+## 15. Known Limitations
 
 - **Stub Auth:** Multi-tenant checks are validated via headers and API keys. Full OAuth or JWT verification was intentionally scoped out to focus on core engine processing.
 - **Limited Conditions operators:** Supports `equals`, `contains`, `greaterThan`, `lessThan`, and `notequals`. Regex matching was omitted.
@@ -397,7 +466,7 @@ node testing/simulate.js
 
 ---
 
-## 15. Submission Verification Checklist
+## 16. Submission Verification Checklist
 
 - [ ] Docker builds and containers startup cleanly.
 - [ ] MongoDB and Redis database ports map correctly.
