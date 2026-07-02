@@ -11,8 +11,8 @@ The engine uses a decoupled architecture where the API gateway ingestion layer a
 ```mermaid
 graph TD
     Client([Outbound Providers / Client Devs]) -->|Ingest webhooks / API requests| Gateway[NestJS API Gateway Service]
-    
-    subgraph Ingestion Layer
+
+    subgraph IngestionLayer["Ingestion Layer"]
         Gateway -->|Deduplication index lookup| Mongo[(MongoDB)]
         Gateway -->|Enqueue Jobs| Redis[(Redis Broker)]
     end
@@ -21,14 +21,13 @@ graph TD
         Redis -->|Dequeue Jobs| Worker[Webhook Worker Processor]
         Worker -->|1. Validate rules & evaluate conditions| RulesEngine[Rules Engine Service]
         Worker -->|2. Sequentially execute steps| ActionsEngine[Actions Engine Service]
-        Worker -->|3. Record Telemetry AuditLogs| Mongo
+        Worker -->|3. Record Telemetry Audit Logs| Mongo
     end
-    
-    subgraph Client Dashboards
+
+    subgraph DashboardLayer["Client Dashboards"]
         Dashboard[Vite React Dashboard Client] -->|Query stats & trigger replays| Gateway
     end
 ```
-
 ---
 
 ## 2. Data Model & Schemas
