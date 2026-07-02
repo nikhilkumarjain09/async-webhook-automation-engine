@@ -1,0 +1,228 @@
+{
+  "info": {
+    "_postman_id": "8b51d18f-a2e1-45a9-bc4c-223d6a89c98a",
+    "name": "Async Webhook Automation Engine integration Tests",
+    "description": "Integration testing endpoints for multi-tenancy, deduplication, worker crash recovery, failed actions, and replays.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Ingest Webhook (Stripe)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "{{tenantId}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_stripe_9999\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_3M3aeELkdIwHu7ix2\",\n      \"amount\": 7500,\n      \"currency\": \"usd\",\n      \"customer\": \"cus_JaneDoe123\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhooks/stripe",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "webhooks",
+            "stripe"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Ingest Duplicate (Deduplication Check)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "{{tenantId}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_stripe_duplicate_1\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": {\n    \"object\": {\n      \"id\": \"pi_duplicate_1\",\n      \"amount\": 6000,\n      \"customer\": \"cus_JaneDoe123\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhooks/stripe",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "webhooks",
+            "stripe"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Invalid Webhook (Auth Isolation Check)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "invalid_tenant_id_value",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_stripe_unauthorized\",\n  \"type\": \"payment_intent.succeeded\",\n  \"data\": { \"amount\": 1000 }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhooks/stripe",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "webhooks",
+            "stripe"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Simulate Action Failure",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "{{tenantId}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_github_failure_trigger\",\n  \"type\": \"issues.opened\",\n  \"issue\": {\n    \"title\": \"SMTP failure trigger\",\n    \"body\": \"This body is fine, but the handler will fail\",\n    \"user\": { \"login\": \"fail\" }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhooks/github",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "webhooks",
+            "github"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Simulate Worker Crash",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "{{tenantId}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_github_crash_trigger\",\n  \"type\": \"issues.opened\",\n  \"issue\": {\n    \"title\": \"Crash simulation\",\n    \"body\": \"Forces process termination\",\n    \"user\": { \"login\": \"crash\" }\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhooks/github",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "webhooks",
+            "github"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Replay Failed Execution",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Tenant-ID",
+            "value": "{{tenantId}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Developer manual reprocessing trigger\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/executions/:id/replay",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "executions",
+            ":id",
+            "replay"
+          ],
+          "variable": [
+            {
+              "key": "id",
+              "value": "<execution_id>"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "tenantId",
+      "value": "60d5ec4a2f8fb814c8f8d9f1",
+      "type": "string"
+    }
+  ]
+}
