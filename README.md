@@ -205,6 +205,14 @@ All endpoints require a valid tenant context headers. Admin and dashboard endpoi
   * `lockRenewTime: 15000ms` (renews lock every 15 seconds for long-running processes).
   * `stalledInterval: 30000ms` (checks for crashed/dead lock holders every 30s).
   * `maxStalledCount: 2` (stalled jobs are retried up to 2 times before marking as failed).
+* **Job Payload Structure:**
+  A job payload is minimal and lightweight to optimize Redis memory footprint, passing references instead of raw data:
+  ```json
+  {
+    "webhookEventId": "60d5ec4a2f8fb814c8f8d9f1",
+    "tenantId": "60d5ec4a2f8fb814c8f8d9f1"
+  }
+  ```
 
 ---
 
@@ -455,7 +463,22 @@ node testing/simulate.js
 
 ---
 
-## 15. Known Limitations
+## 15. Scaling Discussion
+
+For a production environment handling millions of webhooks daily:
+
+1. **Horizontal Worker Scaling:**
+   We can separate the API ingestion layer and worker processing layer into independent containers. The API layer remains lightweight (express/nest routes only enqueuing jobs to Redis), while the worker processor runs on an auto-scaled container group (ECS/K8s) based on queue lag and CPU metrics.
+2. **Redis & BullMQ Partitioning:**
+   BullMQ can leverage Redis Cluster mode. We can partition queues using Tenant ID hashing to ensure heavy tenants do not block other tenants' jobs (Fair Queueing).
+3. **Database Sharding:**
+   Configure MongoDB sharding with the shard key set to `{ tenantId: 1, createdAt: 1 }` to isolate database reads/writes per tenant and speed up time-series queries.
+4. **Idempotency Key Cache:**
+   Move unique event checks (deduplication) to a Redis bloom filter or Redis key set with a TTL (e.g. 24 hours) for sub-millisecond deduplication checks prior to hitting MongoDB.
+
+---
+
+## 16. Known Limitations
 
 - **Stub Auth:** Multi-tenant checks are validated via headers and API keys. Full OAuth or JWT verification was intentionally scoped out to focus on core engine processing.
 - **Limited Conditions operators:** Supports `equals`, `contains`, `greaterThan`, `lessThan`, and `notequals`. Regex matching was omitted.
@@ -466,7 +489,7 @@ node testing/simulate.js
 
 ---
 
-## 16. Submission Verification Checklist
+## 17. Submission Verification Checklist
 
 - [ ] Docker builds and containers startup cleanly.
 - [ ] MongoDB and Redis database ports map correctly.
