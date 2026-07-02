@@ -31,7 +31,10 @@ export class TenantMiddleware implements NestMiddleware {
         }
 
         // Check if the current request is webhook ingestion (which uses signature verification instead of apiKey header verification)
-        const isWebhookIngestion = req.method === 'POST' && req.path.match(/\/api\/webhooks\/[a-zA-Z0-9_]+$/) && !req.path.endsWith('/replay');
+        const pathToCheck = req.originalUrl ? req.originalUrl.split('?')[0] : req.path;
+        const isWebhookIngestion = req.method === 'POST' &&
+          (pathToCheck.match(/\/api\/webhooks\/[a-zA-Z0-9_]+$/) || pathToCheck.match(/\/webhooks\/[a-zA-Z0-9_]+$/)) &&
+          !pathToCheck.endsWith('/replay');
 
         if (!isWebhookIngestion) {
           if (!apiKeyHeader || apiKeyHeader !== tenant.apiKey) {

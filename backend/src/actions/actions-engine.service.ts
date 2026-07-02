@@ -111,6 +111,11 @@ export class ActionsEngineService {
       throw new RetryableActionException(`Transient failure: SMTP server temporary timeout for '${to}'`);
     }
 
+    if (to.includes('crash')) {
+      this.logger.error(`Simulated process crash / unhandled failure for address: ${to}`);
+      throw new Error(`Simulated worker process crash for recipient '${to}'`);
+    }
+
     return {
       success: true,
       to,

@@ -138,7 +138,10 @@ async function run() {
 
   console.log('\nFetching recent failed executions to trigger manual replay...');
   const execsRes = await fetch(`${API_BASE}/executions?status=failed&page=1&limit=1`, {
-    headers: { 'X-Tenant-ID': DEFAULT_TENANT },
+    headers: {
+      'X-Tenant-ID': DEFAULT_TENANT,
+      'X-API-Key': 'key_demo_acme_corporation_0',
+    },
   });
   const execs = await execsRes.json();
 
@@ -150,6 +153,7 @@ async function run() {
       method: 'POST',
       headers: {
         'X-Tenant-ID': DEFAULT_TENANT,
+        'X-API-Key': 'key_demo_acme_corporation_0',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

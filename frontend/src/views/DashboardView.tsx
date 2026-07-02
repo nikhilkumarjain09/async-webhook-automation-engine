@@ -11,7 +11,7 @@ import type { Execution } from '../types';
 import {
   MetricCard, SectionCard, StatusBadge, PageHeader,
   EmptyState, SkeletonMetric, SkeletonRow, ErrorAlert,
-  fmtDate, fmtMs,
+  SourceChip, fmtDate, fmtMs,
 } from '../components/UI';
 
 export const DashboardView: React.FC = () => {
@@ -178,11 +178,12 @@ export const DashboardView: React.FC = () => {
           <table className="ae-table">
             <thead>
               <tr>
-                <th>Run ID</th>
-                <th>Rule</th>
+                <th>Rule Name</th>
+                <th>Source</th>
+                <th>Event Type</th>
+                <th>Webhook Event</th>
                 <th>Status</th>
                 <th>Duration</th>
-                <th>Retries</th>
                 <th>Steps</th>
                 <th>Started</th>
               </tr>
@@ -200,21 +201,42 @@ export const DashboardView: React.FC = () => {
                   </td>
                 </tr>
               )}
-              {!rL && recent?.map((ex) => (
-                <tr key={ex._id}>
-                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                    {ex._id.slice(0, 12)}…
-                  </td>
-                  <td className="td-primary">
-                    {typeof ex.ruleId === 'object' ? ex.ruleId.name : `Rule ${String(ex.ruleId).slice(0, 8)}…`}
-                  </td>
-                  <td><StatusBadge status={ex.status} pulse={ex.status === 'processing'} /></td>
-                  <td className="mono" style={{ fontSize: 12 }}>{fmtMs(ex.durationMs)}</td>
-                  <td style={{ textAlign: 'center' }}>{ex.retryCount}</td>
-                  <td style={{ textAlign: 'center' }}>{ex.steps?.length ?? 0}</td>
-                  <td style={{ fontSize: 12 }}>{fmtDate(ex.startedAt)}</td>
-                </tr>
-              ))}
+              {!rL && recent?.map((ex) => {
+                const rule    = typeof ex.ruleId        === 'object' ? ex.ruleId        : null;
+                const webhook = typeof ex.webhookEventId === 'object' ? ex.webhookEventId : null;
+                const ruleName = rule ? rule.name : `Rule ${String(ex.ruleId).slice(0, 8)}…`;
+                return (
+                  <tr key={ex._id}>
+                    <td className="td-primary" style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ruleName}
+                      {rule?.description && (
+                        <p style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>
+                          {rule.description}
+                        </p>
+                      )}
+                    </td>
+                    <td>
+                      {rule?.triggerSource
+                        ? <SourceChip source={rule.triggerSource} />
+                        : <span className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>—</span>}
+                    </td>
+                    <td>
+                      {rule?.triggerEventType
+                        ? <span style={{ fontSize: 11, fontWeight: 600, padding: '1px 7px', borderRadius: 5, background: 'rgba(99,102,241,0.12)', color: '#818cf8', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{rule.triggerEventType}</span>
+                        : <span className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>—</span>}
+                    </td>
+                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                      {webhook?.eventIdentifier
+                        ? <span title={webhook.eventIdentifier}>{webhook.eventIdentifier.length > 22 ? webhook.eventIdentifier.slice(0, 22) + '…' : webhook.eventIdentifier}</span>
+                        : String(ex.webhookEventId).slice(0, 12) + '…'}
+                    </td>
+                    <td><StatusBadge status={ex.status} pulse={ex.status === 'processing'} /></td>
+                    <td className="mono" style={{ fontSize: 12 }}>{fmtMs(ex.durationMs)}</td>
+                    <td style={{ textAlign: 'center' }}>{ex.steps?.length ?? 0}</td>
+                    <td style={{ fontSize: 12 }}>{fmtDate(ex.startedAt)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

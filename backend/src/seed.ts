@@ -111,8 +111,8 @@ const RULE_TEMPLATES = [
   { name: 'Shopify Customer Created Welcome Email Flow', triggerSource: 'shopify', triggerEventType: 'customer_created' },
   { name: 'Shopify Customer Created Loyalty Profile Init', triggerSource: 'shopify', triggerEventType: 'customer_created' },
   // Pair 14
-  { name: 'Stripe Charge Disputed Urgency Alert', triggerSource: 'stripe', triggerEventType: 'payment_failed' },
-  { name: 'Stripe Charge Dispute Slack Notification', triggerSource: 'stripe', triggerEventType: 'payment_failed' },
+  { name: 'GitHub Issue Email Alerts', triggerSource: 'github', triggerEventType: 'issues.opened' },
+  { name: 'GitHub Issue Slack Logger', triggerSource: 'github', triggerEventType: 'issues.opened' },
 ];
 
 // Failures list
@@ -322,19 +322,42 @@ async function bootstrap() {
       rulesByTenant[tenant._id.toHexString()] = [];
 
       for (let r = 0; r < 30; r++) {
-        const template = RULE_TEMPLATES[r % 15]; // Use the 15 trigger pairs
+        const template = RULE_TEMPLATES[r % RULE_TEMPLATES.length]; // Use the 15 trigger pairs
         const ruleId = new Types.ObjectId();
 
-        const ruleCondition = r % 3 === 0 ? [
+        const ruleCondition = template.triggerSource === 'github' ? [] : (r % 3 === 0 ? [
           { field: 'payload.amount', operator: 'greaterThan', value: 100 },
         ] : r % 3 === 1 ? [
           { field: 'payload.status', operator: 'equals', value: 'paid' },
-        ] : [];
+        ] : []);
 
         // Actions: http_call, slack_notify, email_send, db_operation
         const actTypes = ['http_call', 'slack_notify', 'email_send', 'db_operation'];
-        const actions = [
-          {
+        const actions: any[] = [];
+        
+        if (template.triggerSource === 'github') {
+          if (template.name.includes('Email Alerts')) {
+            actions.push({
+              order: 0,
+              actionType: 'email_send',
+              config: {
+                to: '{{payload.issue.user.login}}@example.com',
+                subject: 'New Issue Opened: {{payload.issue.title}}',
+                body: 'User {{payload.issue.user.login}} opened a new issue.\n\nDescription:\n{{payload.issue.body}}'
+              }
+            });
+          } else {
+            actions.push({
+              order: 0,
+              actionType: 'slack_notify',
+              config: {
+                channel: 'github-issues',
+                text: 'New Issue: {{payload.issue.title}}'
+              }
+            });
+          }
+        } else {
+          actions.push({
             order: 0,
             actionType: actTypes[r % 4],
             config: (actTypes[r % 4] === 'http_call' ? {
@@ -353,16 +376,16 @@ async function bootstrap() {
               operation: 'upsert',
               table: `data_sync_table_${r}`,
             }) as any,
-          },
-        ];
-
-        // 20% of rules have 2 action steps
-        if (r % 5 === 0) {
-          actions.push({
-            order: 1,
-            actionType: actTypes[(r + 1) % 4],
-            config: { note: 'Secondary cascading workflow step' } as any,
           });
+
+          // 20% of rules have 2 action steps
+          if (r % 5 === 0) {
+            actions.push({
+              order: 1,
+              actionType: actTypes[(r + 1) % 4],
+              config: { note: 'Secondary cascading workflow step' } as any,
+            });
+          }
         }
 
         const ruleData = {
@@ -374,7 +397,7 @@ async function bootstrap() {
           triggerEventType: template.triggerEventType,
           conditions: ruleCondition,
           actions,
-          status: Math.random() > 0.08 ? 'active' : 'inactive', // ~92% active
+          status: template.triggerSource === 'github' ? 'active' : (Math.random() > 0.08 ? 'active' : 'inactive'), // ~92% active, 100% active for github
         };
 
         rulesToInsert.push(ruleData);

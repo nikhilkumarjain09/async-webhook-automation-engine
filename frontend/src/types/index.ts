@@ -71,8 +71,19 @@ export interface ExecutionStep {
 export interface Execution {
   _id: string;
   tenantId: string;
-  ruleId: string | { _id: string; name: string };
-  webhookEventId: string;
+  ruleId: string | {
+    _id: string;
+    name: string;
+    triggerSource: string;
+    triggerEventType: string;
+    description?: string;
+  };
+  webhookEventId: string | {
+    _id: string;
+    source: string;
+    eventType: string;
+    eventIdentifier: string;
+  };
   status: 'queued' | 'processing' | 'completed' | 'failed' | 'retrying';
   retryCount: number;
   startedAt: string;

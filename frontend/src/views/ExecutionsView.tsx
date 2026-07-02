@@ -122,12 +122,13 @@ export const ExecutionsView: React.FC = () => {
           <ExecutionCard
             key={ex._id}
             id={ex._id}
-            ruleName={typeof ex.ruleId === 'object' ? ex.ruleId.name : `Rule ${String(ex.ruleId).slice(0, 10)}…`}
-            webhookId={ex.webhookEventId}
+            rule={ex.ruleId}
+            webhook={ex.webhookEventId}
             status={ex.status}
             durationMs={ex.durationMs}
             retryCount={ex.retryCount}
             startedAt={ex.startedAt}
+            completedAt={ex.completedAt}
             error={ex.error}
             steps={ex.steps}
             onReplay={ex.status === 'failed' ? () => replayMut.mutate(ex._id) : undefined}

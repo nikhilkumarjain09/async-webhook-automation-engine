@@ -125,12 +125,18 @@ export class ExecutionsService {
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
+      .populate('ruleId', 'name triggerSource triggerEventType description')
+      .populate('webhookEventId', 'source eventType eventIdentifier')
       .exec();
   }
 
   async findById(tenantId: string, id: string): Promise<Execution> {
     this.logger.log(`Finding execution ${id} for tenant: ${tenantId}`);
-    const execution = await this.executionModel.findOne({ _id: id, tenantId }).exec();
+    const execution = await this.executionModel
+      .findOne({ _id: id, tenantId })
+      .populate('ruleId', 'name triggerSource triggerEventType description')
+      .populate('webhookEventId', 'source eventType eventIdentifier')
+      .exec();
     if (!execution) {
       throw new NotFoundException(`Execution with ID ${id} not found`);
     }

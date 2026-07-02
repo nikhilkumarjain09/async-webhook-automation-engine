@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CheckCircle2, XCircle, Clock, Zap, RotateCcw,
   Copy, Check, ChevronDown, ChevronUp, Loader2,
@@ -404,10 +405,27 @@ export const Modal: React.FC<{
   size?: 'sm' | 'md' | 'lg' | 'xl';
   children: React.ReactNode;
 }> = ({ open, onClose, title, subtitle, footer, size = 'md', children }) => {
-  if (!open) return null;
   const maxW = { sm: 420, md: 560, lg: 720, xl: 900 }[size];
-  return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  if (!open) return null;
+
+  // Render via portal so it escapes any parent transform / overflow / stacking context
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999 }}
+    >
       <div className="modal-panel" style={{ maxWidth: maxW, position: 'relative' }}>
         <div className="modal-header" style={{ paddingBottom: 16 }}>
           <p className="modal-title">{title}</p>
@@ -419,9 +437,11 @@ export const Modal: React.FC<{
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
+
 
 // ── WORKFLOW CARD ───────────────────────────────────────────────────────────
 interface WFStep { type: 'trigger' | 'condition' | 'action'; label: string; sub?: string; }
@@ -480,19 +500,30 @@ export interface ExecStep {
 }
 export const ExecutionCard: React.FC<{
   id: string;
-  ruleName: string;
-  webhookId: string;
+  rule: { _id: string; name: string; triggerSource?: string; triggerEventType?: string; description?: string } | string;
+  webhook: { _id: string; source?: string; eventType?: string; eventIdentifier?: string } | string;
   status: string;
   durationMs: number;
   retryCount: number;
   startedAt: string;
+  completedAt?: string;
   error?: string;
   steps: ExecStep[];
   onReplay?: () => void;
   replayLoading?: boolean;
-}> = ({ id, ruleName, webhookId, status, durationMs, retryCount, startedAt, error, steps, onReplay, replayLoading }) => {
+}> = ({ id, rule, webhook, status, durationMs, retryCount, startedAt, completedAt, error, steps, onReplay, replayLoading }) => {
   const [open, setOpen] = useState(false);
   const [openStep, setOpenStep] = useState<number | null>(null);
+
+  // Resolve populated or raw rule
+  const ruleName        = typeof rule    === 'object' ? rule.name            : `Rule ${String(rule).slice(0, 8)}…`;
+  const triggerSource   = typeof rule    === 'object' ? rule.triggerSource   : undefined;
+  const triggerEvent    = typeof rule    === 'object' ? rule.triggerEventType: undefined;
+  const ruleDescription = typeof rule    === 'object' ? rule.description     : undefined;
+
+  // Resolve populated or raw webhook
+  const webhookSource  = typeof webhook === 'object' ? webhook.source          : undefined;
+  const webhookEventId = typeof webhook === 'object' ? webhook.eventIdentifier : undefined;
 
   const statusIcon = {
     completed:  <CheckCircle2 size={17} style={{ color: 'var(--green-400)', flexShrink: 0 }} />,
@@ -508,11 +539,26 @@ export const ExecutionCard: React.FC<{
         {statusIcon}
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="t-h4" style={{ fontSize: 13 }}>{ruleName}</span>
             <StatusBadge status={status} pulse={status === 'processing'} />
+            {triggerSource && (
+              <SourceChip source={triggerSource} />
+            )}
+            {triggerEvent && (
+              <span style={{
+                fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 5,
+                background: 'rgba(99,102,241,0.12)', color: '#818cf8',
+                letterSpacing: '0.04em', textTransform: 'uppercase',
+              }}>{triggerEvent}</span>
+            )}
           </div>
-          <p className="mono t-micro" style={{ marginTop: 2 }}>{id}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, flexWrap: 'wrap' }}>
+            <span className="mono t-micro">Run: {id.slice(0, 12)}…</span>
+            {webhookEventId && (
+              <span className="mono t-micro" style={{ color: 'var(--text-tertiary)' }}>Event: {webhookEventId}</span>
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
@@ -543,13 +589,20 @@ export const ExecutionCard: React.FC<{
             border: '1px solid var(--border-default)', marginBottom: 20, overflow: 'hidden',
           }}>
             {[
-              { k: 'Execution ID', v: <span className="mono" style={{ fontSize: 11 }}>{id.slice(0,14)}…</span> },
-              { k: 'Started',      v: fmtDate(startedAt) },
-              { k: 'Duration',     v: fmtMs(durationMs) },
-              { k: 'Retries',      v: String(retryCount) },
-              { k: 'Webhook',      v: <span className="mono" style={{ fontSize: 11 }}>{webhookId.slice(0,14)}…</span> },
-              { k: 'Steps Run',    v: String(steps.length) },
-            ].map(({ k, v }) => (
+              { k: 'Execution ID',    v: <span className="mono" style={{ fontSize: 11 }}>{id}</span> },
+              { k: 'Rule Name',       v: <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{ruleName}</span> },
+              triggerSource ? { k: 'Trigger Source',  v: <SourceChip source={triggerSource} /> } : null,
+              triggerEvent  ? { k: 'Event Type',      v: <span className="mono" style={{ fontSize: 11 }}>{triggerEvent}</span> } : null,
+              webhookSource ? { k: 'Webhook Source',  v: <SourceChip source={webhookSource} /> } : null,
+              webhookEventId? { k: 'Webhook Event ID',v: <span className="mono" style={{ fontSize: 11 }}>{webhookEventId}</span> } : null,
+              { k: 'Status',         v: <StatusBadge status={status} pulse={status === 'processing'} /> },
+              { k: 'Started',        v: fmtDate(startedAt) },
+              completedAt   ? { k: 'Completed',       v: fmtDate(completedAt) } : null,
+              { k: 'Duration',       v: fmtMs(durationMs) },
+              { k: 'Retries',        v: String(retryCount) },
+              { k: 'Steps Run',      v: String(steps.length) },
+              ruleDescription ? { k: 'Rule Description', v: <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ruleDescription}</span> } : null,
+            ].filter(Boolean).map(({ k, v }: any) => (
               <div key={k} style={{ padding: '12px 16px', borderRight: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
                 <p className="t-label" style={{ marginBottom: 4 }}>{k}</p>
                 <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{v}</p>
@@ -609,7 +662,7 @@ export const ExecutionCard: React.FC<{
                         color: 'var(--text-tertiary)',
                       }}>step {idx + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        {step.actionType}
+                        {step.actionType.replace('_', ' ')}
                       </span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -643,6 +696,7 @@ export const ExecutionCard: React.FC<{
     </div>
   );
 };
+
 
 // ── EVENT CARD ───────────────────────────────────────────────────────────────
 export const EventCard: React.FC<{
